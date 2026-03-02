@@ -36,7 +36,7 @@ export function PendingTasksModal({ overdueTasks, onProcessTask }: PendingTasksM
                         <h3 style={{ fontSize: 19, marginBottom: 8 }}>{currentTask.title}</h3>
                         {currentTask.description && <p style={{ color: 'var(--label-secondary)', marginBottom: 12 }}>{currentTask.description}</p>}
                         <div className="badge badge-gold" style={{ marginBottom: 16 }}>
-                            <img src="/Coin.png" alt="Coin" style={{ width: 22, height: 22, objectFit: 'contain' }} />
+                            <img src={`${import.meta.env.BASE_URL}Coin.png`} alt="Coin" style={{ width: 22, height: 22, objectFit: 'contain' }} />
                             <span style={{ fontSize: 18 }}>{Math.abs(currentTask.rewardCoins)}</span>
                         </div>
 

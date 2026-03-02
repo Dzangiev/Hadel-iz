@@ -64,7 +64,7 @@ export function TaskItem({ item, onToggle, onItemClick }: TaskItemProps) {
 
             <div className="item-right">
                 <div className={`badge ${isPenalty ? 'badge-red' : 'badge-gold'}`}>
-                    <img src="/Coin.png" alt="Coin" style={{ width: 20, height: 20, objectFit: 'contain' }} />
+                    <img src={`${import.meta.env.BASE_URL}Coin.png`} alt="Coin" style={{ width: 20, height: 20, objectFit: 'contain' }} />
                     <span>{item.rewardCoins > 0 ? '+' : ''}{item.rewardCoins}</span>
                 </div>
                 <div className="item-action">
@@ -129,7 +129,7 @@ export function HabitItem({ item, selectedDate, onToggle, onItemClick }: HabitIt
                 </div>
                 <div className="item-right">
                     <div className="badge badge-gold">
-                        <img src="/Coin.png" alt="Coin" style={{ width: 20, height: 20, objectFit: 'contain' }} />
+                        <img src={`${import.meta.env.BASE_URL}Coin.png`} alt="Coin" style={{ width: 20, height: 20, objectFit: 'contain' }} />
                         <span>+{item.rewardCoins}</span>
                     </div>
                     <div className="habit-action">
@@ -180,7 +180,7 @@ export function RewardItem({ item, onItemClick }: RewardItemProps) {
             </div>
             <div className="item-right">
                 <div className="badge badge-red">
-                    <img src="/Coin.png" alt="Coin" style={{ width: 20, height: 20, objectFit: 'contain' }} />
+                    <img src={`${import.meta.env.BASE_URL}Coin.png`} alt="Coin" style={{ width: 20, height: 20, objectFit: 'contain' }} />
                     <span>−{item.costCoins}</span>
                 </div>
             </div>

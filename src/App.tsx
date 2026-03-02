@@ -181,7 +181,7 @@ function App() {
         <span className="app-title">Hadel iz</span>
         <div className="header-right">
           <div className="coin-display">
-            <img src="/Coin.png" alt="Монетки" style={{ width: 22, height: 22, objectFit: 'contain' }} />
+            <img src={`${import.meta.env.BASE_URL}Coin.png`} alt="Монетки" style={{ width: 22, height: 22, objectFit: 'contain' }} />
             <span>{balance}</span>
           </div>
           <button className="icon-btn" aria-label="Настройки" onClick={() => setIsSettingsOpen(true)}>
