@@ -1,9 +1,11 @@
-import { useState } from 'react';
-import { Settings, Calendar as CalendarIcon, Globe, Plus } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Settings, Calendar as CalendarIcon, Globe, Plus, RefreshCw } from 'lucide-react';
 import { clsx } from 'clsx';
 import { format } from 'date-fns';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from './db/db';
+import { useAuth } from './db/useAuth';
+import { startSync, stopSync, pushAllLocalData, pullAllRemoteData, pushTask, pushHabit, pushReward, pushBalance, deleteRemoteTask, deleteRemoteHabit, deleteRemoteReward } from './db/sync';
 import { DateSelector } from './components/DateSelector';
 import { TaskItem, HabitItem, RewardItem } from './components/ListItems';
 import { CreateItemModal } from './components/CreateItemModal';
@@ -17,6 +19,23 @@ function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isExtraMode, setIsExtraMode] = useState(() => localStorage.getItem('extra-mode') === 'true');
   const [editItem, setEditItem] = useState<{ type: 'task' | 'habit' | 'reward', id: number, data: any } | null>(null);
+  const [syncing, setSyncing] = useState(false);
+
+  const { user: firebaseUser } = useAuth();
+
+  // Start / stop Firestore sync on auth change
+  useEffect(() => {
+    if (firebaseUser) {
+      setSyncing(true);
+      pullAllRemoteData(firebaseUser.uid)
+        .then(() => pushAllLocalData(firebaseUser.uid))
+        .then(() => startSync(firebaseUser.uid))
+        .finally(() => setSyncing(false));
+    } else {
+      stopSync();
+    }
+    return () => stopSync();
+  }, [firebaseUser?.uid]);
 
   const toggleExtraMode = (val: boolean) => {
     setIsExtraMode(val);
@@ -52,12 +71,16 @@ function App() {
         const newBalance = isExtraMode ? (balance + task.rewardCoins) : Math.max(0, balance + task.rewardCoins);
         await db.user.update(1, { balance: newBalance });
       });
+      const updated = await db.tasks.get(id);
+      if (firebaseUser && updated) { pushTask(firebaseUser.uid, updated); pushBalance(firebaseUser.uid, isExtraMode ? (balance + task.rewardCoins) : Math.max(0, balance + task.rewardCoins)); }
     } else if (task.status === 'done') {
       await db.transaction('rw', db.tasks, db.user, async () => {
         await db.tasks.update(id, { status: 'pending' });
         const newBalance = isExtraMode ? (balance - Math.abs(task.rewardCoins)) : Math.max(0, balance - Math.abs(task.rewardCoins));
         await db.user.update(1, { balance: newBalance });
       });
+      const updated = await db.tasks.get(id);
+      if (firebaseUser && updated) { pushTask(firebaseUser.uid, updated); pushBalance(firebaseUser.uid, isExtraMode ? (balance - Math.abs(task.rewardCoins)) : Math.max(0, balance - Math.abs(task.rewardCoins))); }
     }
   };
 
@@ -77,29 +100,39 @@ function App() {
         await db.user.update(1, { balance: balance + habit.rewardCoins });
       }
     });
+    const updated = await db.habits.get(id);
+    if (firebaseUser && updated) { pushHabit(firebaseUser.uid, updated); pushBalance(firebaseUser.uid, isDone ? (isExtraMode ? (balance - habit.rewardCoins) : Math.max(0, balance - habit.rewardCoins)) : balance + habit.rewardCoins); }
   };
 
   const handleCreate = async (type: 'task' | 'habit' | 'reward', data: Record<string, unknown>, editId?: number) => {
     if (type === 'task') {
       if (editId) {
         await db.tasks.update(editId, data as any);
+        const updated = await db.tasks.get(editId);
+        if (firebaseUser && updated) pushTask(firebaseUser.uid, updated);
       } else {
-        await db.tasks.add({
+        const id = await db.tasks.add({
           ...(data as { title: string; description: string; rewardCoins: number }),
           date: dateStr,
           status: 'pending',
           createdAt: Date.now(),
         });
+        const added = await db.tasks.get(id);
+        if (firebaseUser && added) pushTask(firebaseUser.uid, added);
       }
     } else if (type === 'habit') {
       if (editId) {
         await db.habits.update(editId, data as any);
+        const updated = await db.habits.get(editId);
+        if (firebaseUser && updated) pushHabit(firebaseUser.uid, updated);
       } else {
-        await db.habits.add({
+        const id = await db.habits.add({
           ...(data as { title: string; description: string; rewardCoins: number }),
           history: [],
           createdAt: Date.now(),
         });
+        const added = await db.habits.get(id);
+        if (firebaseUser && added) pushHabit(firebaseUser.uid, added);
       }
     } else if (type === 'reward') {
       const costCoins = (data as { costCoins: number }).costCoins;
@@ -122,6 +155,13 @@ function App() {
           await db.user.update(1, { balance: newBalance });
         }
       });
+      if (editId) {
+        const updated = await db.rewards.get(editId);
+        if (firebaseUser && updated) { pushReward(firebaseUser.uid, updated); pushBalance(firebaseUser.uid, isExtraMode ? (balance + updated.costCoins) : Math.max(0, balance)); }
+      } else {
+        const all = await db.rewards.orderBy('createdAt').last();
+        if (firebaseUser && all) { pushReward(firebaseUser.uid, all); pushBalance(firebaseUser.uid, isExtraMode ? (balance - costCoins) : Math.max(0, balance - costCoins)); }
+      }
     }
   };
 
@@ -131,15 +171,19 @@ function App() {
       if (task?.status === 'done') {
         const newBalance = isExtraMode ? (balance - task.rewardCoins) : Math.max(0, balance - task.rewardCoins);
         await db.user.update(1, { balance: newBalance });
+        if (firebaseUser) pushBalance(firebaseUser.uid, newBalance);
       }
       await db.tasks.delete(id);
+      if (firebaseUser) deleteRemoteTask(firebaseUser.uid, id);
     } else if (type === 'habit') {
       await db.habits.delete(id);
+      if (firebaseUser) deleteRemoteHabit(firebaseUser.uid, id);
     } else if (type === 'reward') {
       const rew = await db.rewards.get(id);
       if (rew) {
         await db.user.update(1, { balance: balance + rew.costCoins });
         await db.rewards.delete(id);
+        if (firebaseUser) { pushBalance(firebaseUser.uid, balance + rew.costCoins); deleteRemoteReward(firebaseUser.uid, id); }
       }
     }
   };
@@ -180,6 +224,9 @@ function App() {
       <header className="header">
         <span className="app-title">Hadel iz</span>
         <div className="header-right">
+          {syncing && (
+            <RefreshCw size={14} style={{ opacity: 0.5, animation: 'spin 1s linear infinite' }} />
+          )}
           <div className="coin-display">
             <img src={`${import.meta.env.BASE_URL}Coin.png`} alt="Монетки" style={{ width: 22, height: 22, objectFit: 'contain' }} />
             <span>{balance}</span>
@@ -189,6 +236,7 @@ function App() {
           </button>
         </div>
       </header>
+
 
       <main className="main-content">
         {activeTab === 'calendar' ? (
@@ -270,12 +318,14 @@ function App() {
         editItem={editItem}
       />
 
-      {overdueTasks.length > 0 && (
-        <PendingTasksModal
-          overdueTasks={overdueTasks}
-          onProcessTask={handleProcessOverdueTask}
-        />
-      )}
+      {
+        overdueTasks.length > 0 && (
+          <PendingTasksModal
+            overdueTasks={overdueTasks}
+            onProcessTask={handleProcessOverdueTask}
+          />
+        )
+      }
 
       <SettingsModal
         isOpen={isSettingsOpen}
