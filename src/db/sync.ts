@@ -10,6 +10,7 @@
 import {
     collection,
     doc,
+    getDoc,
     setDoc,
     deleteDoc,
     onSnapshot,
@@ -117,45 +118,69 @@ export async function pushAllLocalData(uid: string) {
     await batch.commit();
 }
 
-// ─── Pull: fetch remote data and merge into Dexie ─────────────────────────────
+// ─── Smart initialization: Firestore is source of truth ───────────────────────
+//
+// Rules:
+//  1. If Firestore has any data  → pull remote and REPLACE local (remote wins).
+//  2. If Firestore is empty AND local has data AND no reset_at in Firestore
+//     (i.e. first-ever login) → push local to Firestore (initial upload).
+//  3. If Firestore has reset_at but no data → user reset from another device;
+//     wipe local data to match.
 
-export async function pullAllRemoteData(uid: string) {
-    // Tasks
-    const remoteTasks = await getDocs(userCol(uid, 'tasks'));
-    for (const snap of remoteTasks.docs) {
-        const remote = snap.data() as Task & { _syncedAt?: unknown };
-        const { _syncedAt, ...taskData } = remote;
-        const local = await db.tasks.get(Number(snap.id));
-        if (!local || (taskData.createdAt ?? 0) > (local.createdAt ?? 0)) {
-            await db.tasks.put({ ...taskData, id: Number(snap.id) });
+export async function initSyncData(uid: string): Promise<void> {
+    const [remoteTasks, remoteHabits, remoteRewards, userSnap] = await Promise.all([
+        getDocs(userCol(uid, 'tasks')),
+        getDocs(userCol(uid, 'habits')),
+        getDocs(userCol(uid, 'rewards')),
+        getDoc(userDoc(uid)),
+    ]);
+
+    const hasRemoteData =
+        remoteTasks.size > 0 || remoteHabits.size > 0 || remoteRewards.size > 0;
+    const wasReset = userSnap.exists() && userSnap.data()?.reset_at;
+
+    if (hasRemoteData) {
+        // ── Remote wins: overwrite local completely ────────────────────────
+        await db.tasks.clear();
+        await db.habits.clear();
+        await db.rewards.clear();
+
+        for (const snap of remoteTasks.docs) {
+            const { _syncedAt, ...data } = snap.data() as Task & { _syncedAt?: unknown };
+            await db.tasks.put({ ...data, id: Number(snap.id) });
         }
-    }
-
-    // Habits
-    const remoteHabits = await getDocs(userCol(uid, 'habits'));
-    for (const snap of remoteHabits.docs) {
-        const remote = snap.data() as Habit & { _syncedAt?: unknown };
-        const { _syncedAt, ...habitData } = remote;
-        const local = await db.habits.get(Number(snap.id));
-        if (!local || (habitData.createdAt ?? 0) > (local.createdAt ?? 0)) {
-            await db.habits.put({ ...habitData, id: Number(snap.id) });
+        for (const snap of remoteHabits.docs) {
+            const { _syncedAt, ...data } = snap.data() as Habit & { _syncedAt?: unknown };
+            await db.habits.put({ ...data, id: Number(snap.id) });
         }
-    }
-
-    // Rewards
-    const remoteRewards = await getDocs(userCol(uid, 'rewards'));
-    for (const snap of remoteRewards.docs) {
-        const remote = snap.data() as Reward & { _syncedAt?: unknown };
-        const { _syncedAt, ...rewardData } = remote;
-        const local = await db.rewards.get(Number(snap.id));
-        if (!local || (rewardData.createdAt ?? 0) > (local.createdAt ?? 0)) {
-            await db.rewards.put({ ...rewardData, id: Number(snap.id) });
+        for (const snap of remoteRewards.docs) {
+            const { _syncedAt, ...data } = snap.data() as Reward & { _syncedAt?: unknown };
+            await db.rewards.put({ ...data, id: Number(snap.id) });
         }
-    }
+        // Balance handled by real-time listener
 
-    // Balance (merge: take max or remote if no local data)
-    // ...handled by real-time listener below
+    } else if (wasReset) {
+        // ── Another device triggered a reset: clear local data too ─────────
+        await db.tasks.clear();
+        await db.habits.clear();
+        await db.rewards.clear();
+        await db.user.update(1, { balance: 0 });
+
+    } else {
+        // ── Firestore is empty, no reset flag → first login, upload local ──
+        await pushAllLocalData(uid);
+    }
 }
+
+export async function markReset(uid: string): Promise<void> {
+    await setDoc(userDoc(uid), { balance: 0, reset_at: serverTimestamp() }, { merge: true });
+}
+
+// Keep old name as thin wrapper for compatibility
+export async function pullAllRemoteData(uid: string): Promise<void> {
+    await initSyncData(uid);
+}
+
 
 // ─── Real-time Firestore → Dexie listener ─────────────────────────────────────
 

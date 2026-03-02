@@ -3,6 +3,7 @@ import { Settings, X, Monitor, Moon, Sun, Download, Upload, Trash2, LogIn, LogOu
 import { useAuth } from '../db/useAuth';
 import { signInWithGoogle, logout, auth, dbFirestore } from '../db/firebase';
 import { db } from '../db/db';
+import { markReset } from '../db/sync';
 import { collection, getDocs, deleteDoc, doc } from 'firebase/firestore';
 import { clsx } from 'clsx';
 
@@ -77,10 +78,8 @@ export function SettingsModal({ isOpen, onClose, isExtraMode, onExtraModeChange 
                     const snap = await getDocs(collection(dbFirestore, 'users', uid, colName));
                     await Promise.all(snap.docs.map(d => deleteDoc(doc(dbFirestore, 'users', uid, colName, d.id))));
                 }
-                // Reset balance in Firestore
-                await import('firebase/firestore').then(({ setDoc, doc: fsDoc }) =>
-                    setDoc(fsDoc(dbFirestore, 'users', uid), { balance: 0 }, { merge: true })
-                );
+                // Mark reset in Firestore so other devices know to wipe local data
+                await markReset(uid);
             }
 
             // 3. Clear localStorage (keep theme)
