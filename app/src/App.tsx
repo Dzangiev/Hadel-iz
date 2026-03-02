@@ -1,0 +1,290 @@
+import { useState } from 'react';
+import { Settings, Calendar as CalendarIcon, Globe, Plus } from 'lucide-react';
+import { clsx } from 'clsx';
+import { format } from 'date-fns';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from './db/db';
+import { DateSelector } from './components/DateSelector';
+import { TaskItem, HabitItem, RewardItem } from './components/ListItems';
+import { CreateItemModal } from './components/CreateItemModal';
+import { PendingTasksModal } from './components/PendingTasksModal';
+import { SettingsModal } from './components/SettingsModal';
+
+function App() {
+  const [activeTab, setActiveTab] = useState<'calendar' | 'global'>('calendar');
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isExtraMode, setIsExtraMode] = useState(() => localStorage.getItem('extra-mode') === 'true');
+  const [editItem, setEditItem] = useState<{ type: 'task' | 'habit' | 'reward', id: number, data: any } | null>(null);
+
+  const toggleExtraMode = (val: boolean) => {
+    setIsExtraMode(val);
+    localStorage.setItem('extra-mode', String(val));
+  };
+
+  const user = useLiveQuery(() => db.user.get(1));
+  const balance = user?.balance ?? 0;
+
+  const dateStr = format(selectedDate, 'yyyy-MM-dd');
+
+  const tasks = useLiveQuery(() => db.tasks.where('date').equals(dateStr).toArray(), [dateStr]) ?? [];
+  const habits = useLiveQuery(() => db.habits.toArray(), []) ?? [];
+  const rewards = useLiveQuery(() => db.rewards.where('dateConsumed').equals(dateStr).toArray(), [dateStr]) ?? [];
+
+  // Get overdue tasks (status pending and date < today)
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
+  const overdueTasks = useLiveQuery(
+    () => db.tasks
+      .where('status').equals('pending')
+      .filter(t => t.date < todayStr)
+      .toArray(),
+    [todayStr]
+  ) ?? [];
+
+  const handleToggleTask = async (id: number) => {
+    const task = await db.tasks.get(id);
+    if (!task) return;
+
+    if (task.status === 'pending') {
+      await db.transaction('rw', db.tasks, db.user, async () => {
+        await db.tasks.update(id, { status: 'done' });
+        const newBalance = isExtraMode ? (balance + task.rewardCoins) : Math.max(0, balance + task.rewardCoins);
+        await db.user.update(1, { balance: newBalance });
+      });
+    } else if (task.status === 'done') {
+      await db.transaction('rw', db.tasks, db.user, async () => {
+        await db.tasks.update(id, { status: 'pending' });
+        const newBalance = isExtraMode ? (balance - Math.abs(task.rewardCoins)) : Math.max(0, balance - Math.abs(task.rewardCoins));
+        await db.user.update(1, { balance: newBalance });
+      });
+    }
+  };
+
+  const handleToggleHabit = async (id: number) => {
+    const habit = await db.habits.get(id);
+    if (!habit) return;
+
+    const isDone = habit.history.includes(dateStr);
+
+    await db.transaction('rw', db.habits, db.user, async () => {
+      if (isDone) {
+        await db.habits.update(id, { history: habit.history.filter(d => d !== dateStr) });
+        const newBalance = isExtraMode ? (balance - habit.rewardCoins) : Math.max(0, balance - habit.rewardCoins);
+        await db.user.update(1, { balance: newBalance });
+      } else {
+        await db.habits.update(id, { history: [...habit.history, dateStr] });
+        await db.user.update(1, { balance: balance + habit.rewardCoins });
+      }
+    });
+  };
+
+  const handleCreate = async (type: 'task' | 'habit' | 'reward', data: Record<string, unknown>, editId?: number) => {
+    if (type === 'task') {
+      if (editId) {
+        await db.tasks.update(editId, data as any);
+      } else {
+        await db.tasks.add({
+          ...(data as { title: string; description: string; rewardCoins: number }),
+          date: dateStr,
+          status: 'pending',
+          createdAt: Date.now(),
+        });
+      }
+    } else if (type === 'habit') {
+      if (editId) {
+        await db.habits.update(editId, data as any);
+      } else {
+        await db.habits.add({
+          ...(data as { title: string; description: string; rewardCoins: number }),
+          history: [],
+          createdAt: Date.now(),
+        });
+      }
+    } else if (type === 'reward') {
+      const costCoins = (data as { costCoins: number }).costCoins;
+      await db.transaction('rw', db.rewards, db.user, async () => {
+        if (editId) {
+          const old = await db.rewards.get(editId);
+          if (old) {
+            const diff = old.costCoins - costCoins;
+            await db.rewards.update(editId, data as any);
+            const newBalance = isExtraMode ? (balance + diff) : Math.max(0, balance + diff);
+            await db.user.update(1, { balance: newBalance });
+          }
+        } else {
+          await db.rewards.add({
+            ...(data as { title: string; description: string; durationMinutes: number; costCoins: number }),
+            dateConsumed: dateStr,
+            createdAt: Date.now(),
+          });
+          const newBalance = isExtraMode ? (balance - costCoins) : Math.max(0, balance - costCoins);
+          await db.user.update(1, { balance: newBalance });
+        }
+      });
+    }
+  };
+
+  const handleDelete = async (type: 'task' | 'habit' | 'reward', id: number) => {
+    if (type === 'task') {
+      const task = await db.tasks.get(id);
+      if (task?.status === 'done') {
+        const newBalance = isExtraMode ? (balance - task.rewardCoins) : Math.max(0, balance - task.rewardCoins);
+        await db.user.update(1, { balance: newBalance });
+      }
+      await db.tasks.delete(id);
+    } else if (type === 'habit') {
+      await db.habits.delete(id);
+    } else if (type === 'reward') {
+      const rew = await db.rewards.get(id);
+      if (rew) {
+        await db.user.update(1, { balance: balance + rew.costCoins });
+        await db.rewards.delete(id);
+      }
+    }
+  };
+
+  const handleProcessOverdueTask = async (taskId: number, action: 'transfer' | 'fail', reason?: string) => {
+    const task = await db.tasks.get(taskId);
+    if (!task) return;
+
+    await db.transaction('rw', db.tasks, db.user, async () => {
+      if (action === 'transfer') {
+        await db.tasks.update(taskId, { status: 'transferred', transferReason: reason });
+        await db.tasks.add({
+          title: task.title,
+          description: task.description,
+          rewardCoins: Math.abs(task.rewardCoins),
+          date: todayStr,
+          status: 'pending',
+          createdAt: Date.now(),
+        });
+      } else {
+        await db.tasks.update(taskId, { status: 'failed' });
+        await db.tasks.add({
+          title: `Штраф: ${task.title}`,
+          description: 'Не выполнено в срок',
+          rewardCoins: -Math.abs(task.rewardCoins),
+          date: todayStr,
+          status: 'done',
+          createdAt: Date.now(),
+        });
+        const newBalance = isExtraMode ? (balance - Math.abs(task.rewardCoins)) : Math.max(0, balance - Math.abs(task.rewardCoins));
+        await db.user.update(1, { balance: newBalance });
+      }
+    });
+  };
+
+  return (
+    <>
+      <header className="header">
+        <span className="app-title">Hadel iz</span>
+        <div className="header-right">
+          <div className="coin-display">
+            <img src="/Coin.png" alt="Монетки" style={{ width: 22, height: 22, objectFit: 'contain' }} />
+            <span>{balance}</span>
+          </div>
+          <button className="icon-btn" aria-label="Настройки" onClick={() => setIsSettingsOpen(true)}>
+            <Settings size={20} />
+          </button>
+        </div>
+      </header>
+
+      <main className="main-content">
+        {activeTab === 'calendar' ? (
+          <>
+            <DateSelector date={selectedDate} onChange={setSelectedDate} />
+
+            <div className="list-container seamless-list">
+              {tasks.length === 0 && rewards.length === 0 && habits.length === 0 && (
+                <div className="empty-state">Пока ничего нет. Жми <strong>+</strong></div>
+              )}
+
+              {tasks.map(task => (
+                <TaskItem
+                  key={task.id}
+                  item={task}
+                  onToggle={handleToggleTask}
+                  onItemClick={id => { setEditItem({ type: 'task', id, data: task }); setIsModalOpen(true); }}
+                />
+              ))}
+
+              {rewards.map(reward => (
+                <RewardItem key={`reward-${reward.id}`} item={reward} onItemClick={id => { setEditItem({ type: 'reward', id, data: reward }); setIsModalOpen(true); }} />
+              ))}
+
+              {habits.map(habit => (
+                <HabitItem
+                  key={habit.id}
+                  item={habit}
+                  selectedDate={dateStr}
+                  onToggle={handleToggleHabit}
+                  onItemClick={id => { setEditItem({ type: 'habit', id, data: habit }); setIsModalOpen(true); }}
+                />
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="global-placeholder">
+            <div className="emoji-icon">🌍</div>
+            <h2>Мир привычек</h2>
+            <p>Здесь будут собираться все твои достижения и глобальная статистика.</p>
+          </div>
+        )}
+      </main>
+
+      {/* strictly iOS 26 tab bar */}
+      <div className="tab-bar-wrapper">
+        <div className="tab-pill">
+          <button
+            className={clsx('tab-btn', activeTab === 'global' && 'active')}
+            onClick={() => setActiveTab('global')}
+          >
+            <Globe size={22} strokeWidth={2.5} />
+            {activeTab === 'global' && <span>Глобальные</span>}
+          </button>
+
+          <button
+            className={clsx('tab-btn', activeTab === 'calendar' && 'active')}
+            onClick={() => setActiveTab('calendar')}
+          >
+            <CalendarIcon size={22} strokeWidth={2.5} />
+            {activeTab === 'calendar' && <span>Календарь</span>}
+          </button>
+        </div>
+
+        <button
+          className="tab-add-btn"
+          onClick={() => setIsModalOpen(true)}
+          aria-label="Создать"
+        >
+          <Plus size={28} strokeWidth={3} />
+        </button>
+      </div>
+
+      <CreateItemModal
+        isOpen={isModalOpen}
+        onClose={() => { setIsModalOpen(false); setEditItem(null); }}
+        onSave={handleCreate}
+        onDelete={handleDelete}
+        editItem={editItem}
+      />
+
+      {overdueTasks.length > 0 && (
+        <PendingTasksModal
+          overdueTasks={overdueTasks}
+          onProcessTask={handleProcessOverdueTask}
+        />
+      )}
+
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        isExtraMode={isExtraMode}
+        onExtraModeChange={toggleExtraMode}
+      />
+    </>
+  );
+}
+
+export default App;

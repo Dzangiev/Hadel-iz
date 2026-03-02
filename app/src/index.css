@@ -1,0 +1,1063 @@
+/* ===========================================
+   МОНЕТКИ – iOS 26 Native Design System
+   Apple Human Interface Guidelines
+   =========================================== */
+
+/* Google Fonts не используем — SF Pro это системный шрифт Apple. */
+
+/* =====================================
+   CSS VARIABLES
+   ===================================== */
+:root {
+  /* Backgrounds */
+  --bg-primary:   #F2F2F7;   /* UIColor.systemGroupedBackground */
+  --bg-secondary: #FFFFFF;   /* UIColor.secondarySystemGroupedBackground */
+  --bg-tertiary:  #F2F2F7;   /* UIColor.tertiarySystemGroupedBackground */
+
+  /* Labels */
+  --label-primary:   rgba(0,0,0,1);           /* UIColor.label */
+  --label-secondary: rgba(60,60,67,0.6);      /* UIColor.secondaryLabel */
+  --label-tertiary:  rgba(60,60,67,0.3);      /* UIColor.tertiaryLabel */
+  --label-quaternary:rgba(60,60,67,0.18);     /* UIColor.quaternaryLabel */
+
+  /* Separator */
+  --separator:         rgba(60,60,67,0.29);
+  --opaque-separator:  #C6C6C8;
+
+  /* Fills */
+  --fill-primary:   rgba(120,120,128,0.2);
+  --fill-secondary: rgba(120,120,128,0.16);
+  --fill-tertiary:  rgba(118,118,128,0.12);
+  --fill-quaternary:rgba(116,116,128,0.08);
+
+  /* iOS System Colors */
+  --ios-blue:    #007AFF;
+  --ios-green:   #34C759;
+  --ios-indigo:  #5856D6;
+  --ios-orange:  #FF9500;
+  --ios-pink:    #FF2D55;
+  --ios-purple:  #AF52DE;
+  --ios-red:     #FF3B30;
+  --ios-teal:    #5AC8FA;
+  --ios-yellow:  #FFCC00;
+  --ios-gray:    #8E8E93;
+  --ios-gray2:   #AEAEB2;
+  --ios-gray3:   #C7C7CC;
+  --ios-gray4:   #D1D1D6;
+  --ios-gray5:   #E5E5EA;
+  --ios-gray6:   #F2F2F7;
+
+  /* Typography (SF Pro based) */
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  --font-rounded: -apple-system, BlinkMacSystemFont, "SF Pro Rounded", "Helvetica Neue", Arial, sans-serif;
+
+  /* Radii */
+  --radius-sm:  6px;
+  --radius-md:  12px;  /* Standard iOS 18 cell radius */
+  --radius-lg:  14px;
+  --radius-xl:  20px;
+  --radius-max: 999px;
+}
+
+/* ===== DARK MODE ===== */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg-primary:   #000000;
+    --bg-secondary: #1C1C1E;
+    --bg-tertiary:  #2C2C2E;
+
+    --label-primary:    rgba(255,255,255,1);
+    --label-secondary:  rgba(235,235,245,0.6);
+    --label-tertiary:   rgba(235,235,245,0.3);
+    --label-quaternary: rgba(235,235,245,0.18);
+
+    --separator:        rgba(84,84,88,0.65);
+    --opaque-separator: #38383A;
+
+    --fill-primary:   rgba(120,120,128,0.36);
+    --fill-secondary: rgba(120,120,128,0.32);
+    --fill-tertiary:  rgba(118,118,128,0.24);
+    --fill-quaternary:rgba(116,116,128,0.18);
+
+    --ios-blue:    #0A84FF;
+    --ios-green:   #32D74B;
+    --ios-indigo:  #5E5CE6;
+    --ios-orange:  #FF9F0A;
+    --ios-pink:    #FF375F;
+    --ios-purple:  #BF5AF2;
+    --ios-red:     #FF453A;
+    --ios-teal:    #64D2FF;
+    --ios-yellow:  #FFD60A;
+    --ios-gray:    #8E8E93;
+    --ios-gray2:   #636366;
+    --ios-gray3:   #48484A;
+    --ios-gray4:   #3A3A3C;
+    --ios-gray5:   #2C2C2E;
+    --ios-gray6:   #1C1C1E;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg-primary:   #000000;
+  --bg-secondary: #1C1C1E;
+  --bg-tertiary:  #2C2C2E;
+
+  --label-primary:    rgba(255,255,255,1);
+  --label-secondary:  rgba(235,235,245,0.6);
+  --label-tertiary:   rgba(235,235,245,0.3);
+  --label-quaternary: rgba(235,235,245,0.18);
+
+  --separator:        rgba(84,84,88,0.65);
+  --opaque-separator: #38383A;
+
+  --fill-primary:   rgba(120,120,128,0.36);
+  --fill-secondary: rgba(120,120,128,0.32);
+  --fill-tertiary:  rgba(118,118,128,0.24);
+  --fill-quaternary:rgba(116,116,128,0.18);
+
+  --ios-blue:    #0A84FF;
+  --ios-green:   #32D74B;
+  --ios-indigo:  #5E5CE6;
+  --ios-orange:  #FF9F0A;
+  --ios-pink:    #FF375F;
+  --ios-purple:  #BF5AF2;
+  --ios-red:     #FF453A;
+  --ios-teal:    #64D2FF;
+  --ios-yellow:  #FFD60A;
+  --ios-gray:    #8E8E93;
+  --ios-gray2:   #636366;
+  --ios-gray3:   #48484A;
+  --ios-gray4:   #3A3A3C;
+  --ios-gray5:   #2C2C2E;
+  --ios-gray6:   #1C1C1E;
+}
+
+/* ===================================
+   RESET
+   =================================== */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0; padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: var(--font);
+  background: var(--bg-primary);
+  color: var(--label-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overscroll-behavior: none;
+  min-height: 100dvh;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  max-width: 800px;   /* Broad screen support */
+  margin: 0 auto;
+  position: relative;
+  overflow: hidden;
+}
+
+button { font-family: var(--font); cursor: pointer; -webkit-appearance: none; appearance: none; }
+input, textarea, select { font-family: var(--font); -webkit-appearance: none; appearance: none; }
+a { color: var(--ios-blue); text-decoration: none; }
+
+/* ===================================
+   iOS NAV BAR (HEADER)
+   =================================== */
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  /* iOS Navigation Bar blur */
+  background: rgba(242, 242, 247, 0.85);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 0.33px solid var(--separator);
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;  /* iOS NavBar height */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .header {
+    background: rgba(0, 0, 0, 0.85);
+  }
+}
+
+:root[data-theme="dark"] .header {
+  background: rgba(0, 0, 0, 0.85);
+}
+
+/* Large Title style (like Settings or Contacts in iOS) */
+.app-title {
+  font-size: 17px;
+  font-weight: 600;      /* SemiBold — iOS NavBar title weight */
+  letter-spacing: -0.4px;
+  color: var(--label-primary);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* iOS Coin badge — orange SF-rounded */
+.coin-display {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, #FFB340, var(--ios-orange));
+  color: #fff;
+  font-size: 16px;
+  font-weight: 800;
+  padding: 4px 12px;
+  border-radius: var(--radius-max);
+  text-shadow: 
+    -1px -1px 0 #000,  
+     1px -1px 0 #000,
+    -1px  1px 0 #000,
+     1px  1px 0 #000,
+     0px  1px 2px rgba(0,0,0,0.4);
+  box-shadow: 0 2px 12px rgba(255, 149, 0, 0.45);
+  transition: transform 0.2s;
+}
+.coin-display:active {
+  transform: scale(0.95);
+}
+
+/* iOS SF Symbol-style tap icon */
+.icon-btn {
+  background: transparent;
+  border: none;
+  width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  color: var(--ios-blue);
+  transition: opacity 0.15s;
+}
+.icon-btn:active { opacity: 0.4; }
+
+/* ===================================
+   MAIN SCROLL AREA
+   =================================== */
+.main-content {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px 0 120px; /* Reduced top, removed side padding */
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* ===================================
+   DATE SELECTOR (Buttons)
+   =================================== */
+.date-selector {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 0 12px 20px; /* Reduced side padding (16 -> 12) */
+}
+
+.date-arrow-btn {
+  background: var(--bg-secondary);
+  border: 1.5px solid var(--fill-secondary);
+  width: 44px; height: 44px;
+  border-radius: 14px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--label-primary);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+  transition: all 0.15s;
+}
+.date-arrow-btn:active { background: var(--fill-primary); transform: scale(0.95); }
+
+.date-display-wrapper {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.date-main-btn {
+  width: 200px;
+  justify-content: center;
+  background: var(--bg-secondary);
+  border: 1.5px solid var(--fill-secondary);
+  padding: 10px 20px;
+  border-radius: 14px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--label-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+  transition: all 0.15s;
+}
+.date-main-btn:active { background: var(--fill-primary); transform: scale(0.95); }
+
+.hidden-date-input {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.date-back-btn {
+  background: none; border: none;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ios-blue);
+  margin-top: 6px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+.date-back-btn:active { background: var(--fill-quaternary); }
+
+/* ===================================
+   LIST CONTAINER
+   =================================== */
+.seamless-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 12px; /* Reduced side padding (16 -> 12) */
+}
+
+.seamless-list .list-item {
+  border-radius: var(--radius-md);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+.seamless-list .list-item:not(:last-child)::after {
+  display: none; /* Remove insect borders for seamless */
+}
+
+/* ===================================
+   LIST ROWS
+   =================================== */
+.list-item {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  min-height: 52px;       /* Increased for better touch target */
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  position: relative;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  gap: 12px;
+  user-select: none;
+}
+
+.item-left-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.item-action {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* iOS-style row highlight on press */
+.list-item:active {
+  background: var(--fill-primary);
+}
+
+/* Inset separator like iOS */
+.list-item:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 54px;  /* inset from left icon */
+  right: 0;
+  height: 0.33px;
+  background-color: var(--separator);
+  pointer-events: none;
+}
+
+.item-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* iOS circle checkbox */
+.check-btn {
+  background: none;
+  border: none;
+  width: 26px; height: 26px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: transform 0.15s;
+}
+.check-btn:active { transform: scale(0.85); }
+
+.item-texts {
+  flex: 1;
+  min-width: 0;
+}
+
+.item-title {
+  font-size: 17px;
+  font-weight: 400;
+  color: var(--label-primary);
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.item-title.done {
+  color: var(--label-tertiary);
+  text-decoration: line-through;
+}
+.item-title.penalty {
+  color: var(--ios-red);
+}
+
+.item-sub {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--label-secondary);
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* iOS accessory / badge */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px; /* slightly more gap for cleaner look */
+  font-size: 17px; /* slightly bigger for better visual weight */
+  font-weight: 700; /* bolder to match icon weight */
+  line-height: normal;
+}
+
+.badge img {
+  display: block;
+  flex-shrink: 0;
+  margin-top: -3px; /* visual correction for icon baseline */
+}
+
+.badge span {
+  display: block;
+  font-variant-numeric: tabular-nums; /* prevents text jitter */
+}
+.badge-gold   { color: var(--ios-orange); }
+.badge-green  { color: var(--ios-green); }
+.badge-red    { color: var(--ios-red); }
+
+/* Transfer button — iOS detail disclosure style */
+.action-icon-btn {
+  background: none;
+  border: none;
+  display: flex; align-items: center;
+  color: var(--label-tertiary);
+  padding: 0 2px;
+}
+.action-icon-btn:active { opacity: 0.5; }
+
+/* iOS disclosure chevron */
+.ios-chevron {
+  color: var(--ios-gray3);
+}
+
+/* Empty states */
+.empty-state {
+  text-align: center;
+  padding: 20px 16px;
+  color: var(--label-secondary);
+  font-size: 15px;
+  font-weight: 400;
+}
+
+/* ===================================
+   HABITKIT STYLE HABITS
+   =================================== */
+.habit-card {
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  user-select: none;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08); /* Lighter shadow for broad themes */
+}
+
+.habit-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+}
+
+.habit-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.habit-title {
+  color: var(--label-primary);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+}
+
+.habit-sub {
+  color: var(--label-secondary);
+  font-size: 14px;
+}
+
+.habit-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.habit-check-btn {
+  background: none; border: none;
+  width: 44px; height: 44px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: var(--fill-quaternary);
+  border: 2px solid var(--fill-secondary);
+  color: var(--separator);
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  padding: 0;
+}
+
+.habit-check-btn.pre-clicked {
+  border-color: var(--ios-orange);
+  background: rgba(255, 159, 10, 0.15);
+  transform: scale(1.1);
+  color: var(--ios-orange);
+}
+
+.habit-check-btn.done {
+  background: rgba(168, 85, 247, 0.15); /* Purple tint */
+  border-color: #A855F7;
+}
+
+.habit-check-btn:active {
+  transform: scale(0.9);
+}
+
+.habit-heatmap-grid {
+  display: grid;
+  grid-template-columns: repeat(27, 1fr);
+  gap: 3px;
+  padding-top: 8px;
+  width: 100%;
+}
+
+.habit-heatmap-cell {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  background: var(--fill-tertiary);
+  border-radius: 50%;
+
+  transition: background 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-shrink: 0;
+}
+.habit-heatmap-cell.active {
+  background: #A855F7; /* HabitKit style purple */
+}
+
+/* ===================================
+   TAB BAR  — iOS 26 / Liquid Glass
+   =================================== */
+.tab-bar-wrapper {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 800px;
+  padding: 0 16px 28px;  /* match iPhone safe area */
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  z-index: 200;
+  /* pure pointer-events pass-through on the wrapper itself */
+  pointer-events: none;
+}
+
+.tab-pill {
+  flex: 1;
+  /* iOS 26 Liquid Glass effect */
+  background: rgba(242, 242, 247, 0.78);
+  backdrop-filter: blur(30px) saturate(180%);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  border-radius: 28px;
+  border: 0.33px solid rgba(0,0,0,0.12);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+  display: flex;
+  align-items: center;
+  padding: 6px;
+  gap: 2px;
+  pointer-events: auto;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .tab-pill {
+    background: rgba(28, 28, 30, 0.82);
+    border: 0.33px solid rgba(255,255,255,0.12);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.45);
+  }
+}
+
+:root[data-theme="dark"] .tab-pill {
+  background: rgba(28, 28, 30, 0.82);
+  border: 0.33px solid rgba(255,255,255,0.12);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.45);
+}
+
+.tab-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 14px;
+  border-radius: 22px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--label-secondary);
+  transition: all 0.2s;
+}
+
+.tab-btn.active {
+  background: var(--ios-blue);
+  color: #fff;
+}
+.tab-btn:active { opacity: 0.6; }
+
+.tab-add-btn {
+  width: 52px; height: 52px;
+  /* iOS 26 Liquid Glass add button */
+  background: rgba(242, 242, 247, 0.78);
+  backdrop-filter: blur(30px) saturate(180%);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  border: 0.33px solid rgba(0,0,0,0.12);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--ios-blue);
+  pointer-events: auto;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .tab-add-btn {
+    background: rgba(28, 28, 30, 0.82);
+    border: 0.33px solid rgba(255,255,255,0.12);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.45);
+  }
+}
+
+:root[data-theme="dark"] .tab-add-btn {
+  background: rgba(28, 28, 30, 0.82);
+  border: 0.33px solid rgba(255,255,255,0.12);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.45);
+}
+
+.tab-add-btn:active {
+  transform: scale(0.88);
+  opacity: 0.7;
+}
+
+/* ===================================
+   MODALS — iOS Sheet (slide up)
+   =================================== */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4); /* Darker backdrop */
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 500;
+  animation: fadeIn 0.2s ease;
+}
+
+.modal-content {
+  background: var(--bg-secondary); /* Changed from primary for contrast */
+  width: 100%;
+  max-width: 600px;
+  border-radius: 12px 12px 0 0;
+  padding-bottom: max(env(safe-area-inset-bottom), 24px);
+  animation: slideUp 0.35s cubic-bezier(0.22, 0.61, 0.36, 1);
+  overflow: hidden;
+  box-shadow: 0 -4px 24px rgba(0,0,0,0.15); /* Added shadow */
+}
+
+.modal-handle {
+  width: 36px; height: 5px;
+  background: var(--ios-gray3);
+  border-radius: var(--radius-max);
+  margin: 10px auto 4px;
+}
+
+/* Modal nav bar style header */
+.modal-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  padding: 10px 16px 8px;
+  border-bottom: 0.33px solid var(--separator);
+}
+
+.modal-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--label-primary);
+}
+
+/* X button positioned top-right */
+.icon-btn.modal-close {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 30px; height: 30px;
+  background: var(--fill-primary);
+  border-radius: 50%;
+  color: var(--label-secondary);
+}
+
+.modal-body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ===================================
+   iOS SEGMENTED CONTROL 
+   (type picker inside modal)
+   =================================== */
+.type-selector {
+  background: var(--fill-primary);
+  padding: 2px;
+  border-radius: 9px;
+  display: flex;
+  margin-bottom: 4px;
+}
+
+.type-btn {
+  flex: 1;
+  padding: 6px 4px;
+  border-radius: 7px;
+  background: transparent;
+  border: none;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--label-primary);
+  transition: all 0.2s;
+}
+
+.type-btn[class*="active-"] {
+  background: var(--bg-secondary);
+  color: var(--label-primary);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+}
+
+/* ===================================
+   FORM ELEMENTS
+   =================================== */
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.input-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--label-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding-left: 2px;
+}
+
+.form-input {
+  width: 100%;
+  background: var(--fill-quaternary);
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  font-size: 17px;
+  font-weight: 400;
+  color: var(--label-primary);
+  outline: none;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.form-input:focus {
+  background: var(--bg-secondary);
+  border-color: var(--ios-blue);
+  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.1);
+}
+
+.form-input::placeholder { 
+  color: var(--label-tertiary); 
+}
+
+textarea.form-input { 
+  resize: vertical; 
+  min-height: 80px; 
+  line-height: 1.4;
+}
+
+/* ===================================
+   COINS PICKER
+   =================================== */
+.coins-selector {
+  display: flex;
+  gap: 8px;
+}
+
+.coin-select-btn {
+  flex: 1;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--bg-secondary);
+  border: 1px solid var(--separator);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--label-primary);
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+}
+.coin-select-btn.active {
+  background: var(--ios-orange);
+  border-color: var(--ios-orange);
+  color: #fff;
+}
+
+/* ===================================
+   SLIDER (Отдых Duration)
+   =================================== */
+.slider-container {
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.slider-val {
+  text-align: center;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--label-primary);
+}
+
+.form-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: var(--radius-max);
+  /* iOS-style blue track */
+  background: linear-gradient(
+    to right,
+    var(--ios-blue) 0%,
+    var(--ios-blue) var(--progress, 0%),
+    var(--ios-gray4) var(--progress, 0%),
+    var(--ios-gray4) 100%
+  );
+  outline: none;
+  border: none;
+}
+.form-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: #fff;
+  border: none;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.25), 0 0 0 0.5px rgba(0,0,0,0.04);
+  cursor: pointer;
+}
+.form-slider::-moz-range-thumb {
+  -moz-appearance: none;
+  appearance: none;
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: #fff;
+  border: none;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+  cursor: pointer;
+}
+
+/* ===================================
+   iOS PRIMARY BUTTON (blue full-width)
+   =================================== */
+.submit-btn {
+  width: 100%;
+  padding: 14px;
+  border-radius: var(--radius-md);
+  background: var(--ios-blue);
+  color: #fff;
+  border: none;
+  font-size: 17px;
+  font-weight: 600;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  transition: opacity 0.2s;
+}
+.submit-btn:active { opacity: 0.6; }
+
+/* Transfer task modal */
+.warning-box {
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  font-size: 14px;
+  color: var(--ios-red);
+  border-left: 3px solid var(--ios-red);
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  font-size: 15px;
+  color: var(--label-primary);
+  cursor: pointer;
+}
+.checkbox-label input[type=checkbox] {
+  accent-color: var(--ios-blue);
+  width: 18px; height: 18px;
+}
+
+/* Global tab placeholder */
+.global-placeholder {
+  text-align: center;
+  padding: 48px 24px;
+}
+.emoji-icon { font-size: 64px; margin-bottom: 16px; }
+.global-placeholder h2 {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--label-primary);
+  margin-bottom: 8px;
+}
+.global-placeholder p {
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--label-secondary);
+  line-height: 1.5;
+}
+
+/* ===================================
+   ANIMATIONS
+   =================================== */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+
+/* ===================================
+   SLIDE TO UNLOCK FOR TASKS
+   =================================== */
+
+
+
+
+@keyframes shimmer {
+  to { background-position: 200% center; }
+}
+
+
+.slide-thumb:active { cursor: grabbing; color: var(--ios-blue); }
+
+/* ===================================
+   iOS SETTINGS GROUP (Grouped List)
+   =================================== */
+.settings-group {
+  background: var(--fill-quaternary);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.settings-row-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: transparent;
+  border: none;
+  font-size: 16px;
+  font-weight: 400;
+  color: var(--label-primary);
+  text-align: left;
+  transition: background 0.15s;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.settings-row-btn:active {
+  background: var(--fill-tertiary);
+}
+
+.settings-row-btn:not(:last-child) {
+  border-bottom: 1px solid var(--fill-secondary);
+}
+
+.settings-row-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--fill-secondary);
+  color: var(--label-primary);
+  flex-shrink: 0;
+}
