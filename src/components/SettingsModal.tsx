@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Settings, X, Monitor, Moon, Sun, Download, Upload, Trash2, LogIn, LogOut, User as UserIcon } from 'lucide-react';
 import { useAuth } from '../db/useAuth';
-import { signInWithGoogle, logout } from '../db/firebase';
+import { signInWithGoogle, logout, auth, dbFirestore } from '../db/firebase';
 import { db } from '../db/db';
+import { collection, getDocs, deleteDoc, doc } from 'firebase/firestore';
 import { clsx } from 'clsx';
 
 interface SettingsModalProps {
@@ -62,11 +63,31 @@ export function SettingsModal({ isOpen, onClose, isExtraMode, onExtraModeChange 
 
     const handleReset = async () => {
         if (confirm('Вы уверены, что хотите сбросить все данные? Это действие нельзя отменить.')) {
+            // 1. Clear local Dexie DB
             await db.tasks.clear();
             await db.habits.clear();
             await db.rewards.clear();
             await db.user.update(1, { balance: 0 });
+
+            // 2. Clear Firestore remote data for this user
+            const uid = auth.currentUser?.uid;
+            if (uid) {
+                const cols = ['tasks', 'habits', 'rewards'];
+                for (const colName of cols) {
+                    const snap = await getDocs(collection(dbFirestore, 'users', uid, colName));
+                    await Promise.all(snap.docs.map(d => deleteDoc(doc(dbFirestore, 'users', uid, colName, d.id))));
+                }
+                // Reset balance in Firestore
+                await import('firebase/firestore').then(({ setDoc, doc: fsDoc }) =>
+                    setDoc(fsDoc(dbFirestore, 'users', uid), { balance: 0 }, { merge: true })
+                );
+            }
+
+            // 3. Clear localStorage (keep theme)
+            const savedTheme = localStorage.getItem('app-theme');
             localStorage.clear();
+            if (savedTheme) localStorage.setItem('app-theme', savedTheme);
+
             window.location.reload();
         }
     };
