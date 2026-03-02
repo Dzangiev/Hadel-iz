@@ -4,6 +4,7 @@ import react from '@vitejs/plugin-react';
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  base: '/Hadel-iz/',
   plugins: [
     react(),
     VitePWA({
@@ -29,7 +30,7 @@ export default defineConfig({
             src: 'pwa-512x512.png',
             sizes: '512x512',
             type: 'image/png',
-            purpose: 'any'  
+            purpose: 'any'
           },
           {
             src: 'maskable-icon-512x512.png',
