@@ -148,15 +148,16 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overscroll-behavior: none;
-  min-height: 100dvh;
+  /* Точно viewpoort — чтобы #root мог занять 100% и не создавал скролл страницы */
+  height: 100dvh;
+  overflow: hidden;
 }
 
 #root {
   display: flex;
   flex-direction: column;
-  min-height: 100dvh;
-  max-width: 800px;   /* Broad screen support */
-  margin: 0 auto;
+  height: 100dvh;       /* точно = экран */
+  /* Убрано ограничение ширины, чтобы хедер растянулся на 100vw */
   position: relative;
   overflow: hidden;
 }
@@ -167,45 +168,73 @@ a { color: var(--ios-blue); text-decoration: none; }
 
 /* ===================================
    iOS NAV BAR (HEADER)
+   Apple HIG: Navigation Bar
    =================================== */
 .header {
   position: sticky;
   top: 0;
   z-index: 100;
-  /* iOS Navigation Bar blur */
-  background: rgba(242, 242, 247, 0.85);
+  background: rgba(242, 242, 247, 0.7); /* Более прозрачный фон, ближе к Apple */
   backdrop-filter: saturate(180%) blur(20px);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   border-bottom: 0.33px solid var(--separator);
-  padding: 12px 20px;
+  /* Центрируем контент шапки до 800px, а фон растягивается */
+  padding: 8px max(16px, calc((100vw - 800px) / 2 + 16px));
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 44px;  /* iOS NavBar height */
+  gap: 10px;
+  min-height: 52px;
+  flex-shrink: 0;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .header {
-    background: rgba(0, 0, 0, 0.85);
+    background: rgba(0, 0, 0, 0.65);
   }
 }
-
 :root[data-theme="dark"] .header {
-  background: rgba(0, 0, 0, 0.85);
+  background: rgba(0, 0, 0, 0.65);
 }
 
-/* Large Title style (like Settings or Contacts in iOS) */
-.app-title {
-  font-size: 17px;
-  font-weight: 600;      /* SemiBold — iOS NavBar title weight */
-  letter-spacing: -0.4px;
+/* ---- Date pill (lives in header left side) ---- */
+.header-date-wrapper {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.header-date-btn {
+  /* Pill shape, 100% rounded */
+  border-radius: var(--radius-max);
+  border: none;
+  background: var(--fill-tertiary);
   color: var(--label-primary);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  padding: 7px 16px;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  transition: background 0.15s, transform 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+.header-date-btn:active {
+  background: var(--fill-secondary);
+  transform: scale(0.97);
+}
+/* Subtle blue tint when showing today */
+.header-date-btn.today {
+  background: rgba(10, 132, 255, 0.12);
+  color: var(--ios-blue);
 }
 
 .header-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 /* iOS Coin badge — orange SF-rounded */
@@ -215,9 +244,9 @@ a { color: var(--ios-blue); text-decoration: none; }
   gap: 6px;
   background: linear-gradient(135deg, #FFB340, var(--ios-orange));
   color: #fff;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 800;
-  padding: 4px 12px;
+  padding: 4px 10px;
   border-radius: var(--radius-max);
   text-shadow: 
     -1px -1px 0 #000,  
@@ -228,9 +257,7 @@ a { color: var(--ios-blue); text-decoration: none; }
   box-shadow: 0 2px 12px rgba(255, 149, 0, 0.45);
   transition: transform 0.2s;
 }
-.coin-display:active {
-  transform: scale(0.95);
-}
+.coin-display:active { transform: scale(0.95); }
 
 /* iOS SF Symbol-style tap icon */
 .icon-btn {
@@ -245,85 +272,44 @@ a { color: var(--ios-blue); text-decoration: none; }
 .icon-btn:active { opacity: 0.4; }
 
 /* ===================================
-   MAIN SCROLL AREA
+   MAIN — fixed-height, no page scroll
    =================================== */
 .main-content {
   flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* Центрируем основной контент до 800px */
+  max-width: 800px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* ---- Scrollable list inside main ---- */
+.scroll-list {
+  flex: 1;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  padding: 12px 0 120px; /* Reduced top, removed side padding */
-  display: flex;
-  flex-direction: column;
-  gap: 0;
+  /* Отступ сверху (24px), чтобы список не прилипал к шапке */
+  padding: 20px 12px 120px; 
+  /* Скрываем скроллбар */
+  scrollbar-width: none;          /* Firefox */
+  -ms-overflow-style: none;       /* IE/Edge */
+}
+.scroll-list::-webkit-scrollbar {
+  display: none;                  /* Chrome/Safari */
 }
 
-/* ===================================
-   DATE SELECTOR (Buttons)
-   =================================== */
-.date-selector {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 0 12px 20px; /* Reduced side padding (16 -> 12) */
-}
-
-.date-arrow-btn {
-  background: var(--bg-secondary);
-  border: 1.5px solid var(--fill-secondary);
-  width: 44px; height: 44px;
-  border-radius: 14px;
-  display: flex; align-items: center; justify-content: center;
-  color: var(--label-primary);
-  box-shadow: 0 2px 6px rgba(0,0,0,0.04);
-  transition: all 0.15s;
-}
-.date-arrow-btn:active { background: var(--fill-primary); transform: scale(0.95); }
-
-.date-display-wrapper {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.date-main-btn {
-  width: 200px;
-  justify-content: center;
-  background: var(--bg-secondary);
-  border: 1.5px solid var(--fill-secondary);
-  padding: 10px 20px;
-  border-radius: 14px;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--label-primary);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.04);
-  transition: all 0.15s;
-}
-.date-main-btn:active { background: var(--fill-primary); transform: scale(0.95); }
-
+/* hidden-date-input used by DateSelector */
 .hidden-date-input {
   position: absolute;
   top: 50%; left: 50%;
   transform: translate(-50%, -50%);
   opacity: 0;
   pointer-events: none;
+  width: 0; height: 0;
 }
-
-.date-back-btn {
-  background: none; border: none;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--ios-blue);
-  margin-top: 6px;
-  padding: 4px 8px;
-  border-radius: 8px;
-  transition: background 0.15s;
-}
-.date-back-btn:active { background: var(--fill-quaternary); }
 
 /* ===================================
    LIST CONTAINER
@@ -332,7 +318,6 @@ a { color: var(--ios-blue); text-decoration: none; }
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 0 12px; /* Reduced side padding (16 -> 12) */
 }
 
 .seamless-list .list-item {
@@ -417,11 +402,13 @@ a { color: var(--ios-blue); text-decoration: none; }
 }
 
 .item-title {
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 400;
   color: var(--label-primary);
-  display: block;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -528,9 +515,15 @@ a { color: var(--ios-blue); text-decoration: none; }
 
 .habit-title {
   color: var(--label-primary);
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 600;
   letter-spacing: -0.2px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .habit-sub {
@@ -702,34 +695,44 @@ a { color: var(--ios-blue); text-decoration: none; }
 
 /* ===================================
    MODALS — iOS Sheet (slide up)
+   Apple HIG: Sheets for iOS & iPadOS
    =================================== */
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.4); /* Darker backdrop */
+  /* Apple HIG: dimmed background at ~40% opacity */
+  background: rgba(0,0,0,0.4);
   display: flex;
   align-items: flex-end;
   justify-content: center;
   z-index: 500;
-  animation: fadeIn 0.2s ease;
+  animation: fadeIn 0.25s ease;
 }
 
 .modal-content {
-  background: var(--bg-secondary); /* Changed from primary for contrast */
+  /* Apple HIG: card surfaced from bg-secondary */
+  background: var(--bg-secondary);
   width: 100%;
   max-width: 600px;
-  border-radius: 12px 12px 0 0;
-  padding-bottom: max(env(safe-area-inset-bottom), 24px);
+  /* Apple HIG: top corners 10–16pt */
+  border-radius: 16px 16px 0 0;
+  /* Apple HIG: max height ~90% of screen */
+  max-height: 90dvh;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: max(env(safe-area-inset-bottom), 20px);
   animation: slideUp 0.35s cubic-bezier(0.22, 0.61, 0.36, 1);
+  box-shadow: 0 -2px 32px rgba(0,0,0,0.18);
   overflow: hidden;
-  box-shadow: 0 -4px 24px rgba(0,0,0,0.15); /* Added shadow */
 }
 
+/* Apple HIG: grab indicator — centered, 36×5 */
 .modal-handle {
   width: 36px; height: 5px;
   background: var(--ios-gray3);
   border-radius: var(--radius-max);
-  margin: 10px auto 4px;
+  margin: 8px auto 0;
+  flex-shrink: 0;
 }
 
 /* Modal nav bar style header */
@@ -765,6 +768,10 @@ a { color: var(--ios-blue); text-decoration: none; }
   display: flex;
   flex-direction: column;
   gap: 16px;
+  /* Apple HIG: sheet body should scroll independently */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  flex: 1;
 }
 
 /* ===================================
@@ -995,9 +1002,26 @@ textarea.form-input {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
 @keyframes slideUp {
   from { transform: translateY(100%); }
   to   { transform: translateY(0); }
+}
+@keyframes slideDown {
+  from { transform: translateY(0); }
+  to   { transform: translateY(100%); }
+}
+
+/* Закрытие: оверлей уходит в прозрачность, шит съезжает вниз */
+.modal-overlay.closing {
+  animation: fadeOut 0.3s cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+.modal-overlay.closing .modal-content,
+.modal-overlay.closing .sheet-confirm-card {
+  animation: slideDown 0.3s cubic-bezier(0.4, 0, 1, 1) forwards;
 }
 
 /* ===================================
@@ -1061,3 +1085,271 @@ textarea.form-input {
   color: var(--label-primary);
   flex-shrink: 0;
 }
+
+/* ===================================
+   BELL BUTTON + BADGE
+   =================================== */
+.bell-btn {
+  position: relative;
+  color: var(--ios-blue);
+}
+
+.bell-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  background: var(--ios-red);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: var(--radius-max);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 3px;
+  line-height: 1;
+  pointer-events: none;
+  box-shadow: 0 0 0 1.5px var(--bg-primary);
+}
+
+/* ===================================
+   NOTIFICATIONS SHEET
+   Apple HIG: sheet with scrollable body
+   =================================== */
+/* .notif-sheet inherits .modal-content */
+
+
+.notif-body {
+  padding: 12px 16px 16px;
+  gap: 12px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  flex: 1;
+}
+
+.notif-header-desc {
+  font-size: 14px;
+  color: var(--label-secondary);
+  text-align: center;
+  padding: 0 8px 4px;
+  line-height: 1.45;
+}
+
+.notif-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 40px 0;
+}
+
+.notif-empty-icon {
+  font-size: 48px;
+}
+
+.notif-empty p {
+  font-size: 16px;
+  color: var(--label-secondary);
+}
+
+.notif-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Individual overdue task card */
+.notif-task-card {
+  background: var(--fill-quaternary);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.notif-task-info {
+  padding: 14px 16px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.notif-task-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--label-primary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.notif-task-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notif-task-date {
+  font-size: 12px;
+  color: var(--label-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.notif-task-coins {
+  font-size: 13px !important;
+}
+
+/* Action button row */
+.notif-task-actions {
+  border-top: 0.33px solid var(--separator);
+  display: flex;
+  flex-direction: column;
+}
+
+.notif-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 16px;
+  font-size: 15px;
+  font-weight: 500;
+  border: none;
+  background: transparent;
+  text-align: left;
+  transition: background 0.15s;
+  cursor: pointer;
+}
+
+.notif-action-btn:not(:last-child) {
+  border-bottom: 0.33px solid var(--separator);
+}
+
+.notif-action-btn:active {
+  background: var(--fill-secondary);
+}
+
+.notif-action-btn.transfer {
+  color: var(--ios-blue);
+}
+
+.notif-action-btn.skip {
+  color: var(--ios-green);
+}
+
+.notif-action-btn.fail {
+  color: var(--ios-red);
+}
+
+/* ===================================
+   CONFIRMATION MINI-SHEET
+   Apple HIG: alert-style confirmation
+   =================================== */
+.sheet-confirm-card {
+  background: var(--bg-secondary);
+  width: 100%;
+  max-width: 600px;
+  border-radius: 16px 16px 0 0;
+  padding-bottom: max(env(safe-area-inset-bottom), 20px);
+  animation: slideUp 0.3s cubic-bezier(0.22, 0.61, 0.36, 1);
+  box-shadow: 0 -2px 32px rgba(0,0,0,0.20);
+}
+
+.sheet-confirm-content {
+  padding: 20px 24px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.sheet-confirm-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
+.sheet-confirm-icon.transfer {
+  background: rgba(10, 132, 255, 0.12);
+  color: var(--ios-blue);
+}
+
+.sheet-confirm-icon.skip {
+  background: rgba(50, 215, 75, 0.12);
+  color: var(--ios-green);
+}
+
+.sheet-confirm-icon.fail {
+  background: rgba(255, 69, 58, 0.12);
+  color: var(--ios-red);
+}
+
+.sheet-confirm-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--label-primary);
+}
+
+.sheet-confirm-desc {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--label-primary);
+}
+
+.sheet-confirm-subdesc {
+  font-size: 13px;
+  color: var(--label-secondary);
+  line-height: 1.4;
+}
+
+.sheet-confirm-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+  margin-bottom: 8px;
+  width: 100%;
+}
+
+.sheet-confirm-btn {
+  flex: 1;
+  padding: 14px;
+  border-radius: var(--radius-md);
+  font-size: 16px;
+  font-weight: 600;
+  border: none;
+  transition: opacity 0.15s, transform 0.1s;
+  cursor: pointer;
+}
+
+.sheet-confirm-btn:active {
+  opacity: 0.7;
+  transform: scale(0.97);
+}
+
+.sheet-confirm-btn.cancel {
+  background: var(--fill-primary);
+  color: var(--label-primary);
+}
+
+.sheet-confirm-btn.confirm.transfer {
+  background: var(--ios-blue);
+  color: #fff;
+}
+
+.sheet-confirm-btn.confirm.skip {
+  background: var(--ios-green);
+  color: #fff;
+}
+
+.sheet-confirm-btn.confirm.fail {
+  background: var(--ios-red);
+  color: #fff;
+}
+

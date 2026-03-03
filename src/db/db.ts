@@ -6,7 +6,7 @@ export interface Task {
     description: string;
     rewardCoins: number; // 1 to 5
     date: string; // ISO format YYYY-MM-DD
-    status: 'pending' | 'done' | 'transferred' | 'failed';
+    status: 'pending' | 'done' | 'transferred' | 'failed' | 'skipped';
     transferReason?: string;
     createdAt: number;
 }

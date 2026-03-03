@@ -58,7 +58,6 @@ export function TaskItem({ item, onToggle, onItemClick }: TaskItemProps) {
                     <span className={`item-title ${isDone ? 'done' : ''} ${isPenalty ? 'penalty' : ''}`}>
                         {isPenalty ? '⚠️ ' : ''}{item.title}
                     </span>
-                    {item.description && <span className="item-sub">{item.description}</span>}
                 </div>
             </div>
 
@@ -124,7 +123,7 @@ export function HabitItem({ item, selectedDate, onToggle, onItemClick }: HabitIt
                 <div className="habit-info">
                     <span className="habit-title">{item.title}</span>
                     <span className="habit-sub">
-                        {item.description || `Выполнено раз: ${completedCount}`}
+                        {`Выполнено раз: ${completedCount}`}
                     </span>
                 </div>
                 <div className="item-right">

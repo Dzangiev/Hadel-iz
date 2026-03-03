@@ -6,6 +6,7 @@ import { db } from '../db/db';
 import { markReset } from '../db/sync';
 import { collection, getDocs, deleteDoc, doc } from 'firebase/firestore';
 import { clsx } from 'clsx';
+import { useSheetClose } from './useSheetClose';
 
 interface SettingsModalProps {
     isOpen: boolean;
@@ -19,6 +20,7 @@ type Theme = 'system' | 'light' | 'dark';
 export function SettingsModal({ isOpen, onClose, isExtraMode, onExtraModeChange }: SettingsModalProps) {
     const [theme, setTheme] = useState<Theme>('system');
     const { user } = useAuth();
+    const { isClosing, requestClose, handleAnimationEnd } = useSheetClose(isOpen, onClose);
 
     // Load theme on mount
     useEffect(() => {
@@ -147,7 +149,7 @@ export function SettingsModal({ isOpen, onClose, isExtraMode, onExtraModeChange 
     if (!isOpen) return null;
 
     return (
-        <div className="modal-overlay" onClick={onClose}>
+        <div className={`modal-overlay${isClosing ? ' closing' : ''}`} onClick={requestClose} onAnimationEnd={handleAnimationEnd}>
             <div className="modal-content" onClick={e => e.stopPropagation()}>
                 <div className="modal-handle" />
 
@@ -156,7 +158,7 @@ export function SettingsModal({ isOpen, onClose, isExtraMode, onExtraModeChange 
                         <Settings size={20} />
                         Настройки
                     </span>
-                    <button className="icon-btn modal-close" onClick={onClose} style={{ position: 'absolute', right: 16 }}>
+                    <button className="icon-btn modal-close" onClick={requestClose} style={{ position: 'absolute', right: 16 }}>
                         <X size={20} />
                     </button>
                 </div>

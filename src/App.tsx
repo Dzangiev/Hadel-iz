@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Settings, Calendar as CalendarIcon, Globe, Plus, RefreshCw } from 'lucide-react';
+import { Settings, Calendar as CalendarIcon, Globe, Plus, RefreshCw, Bell } from 'lucide-react';
 import { clsx } from 'clsx';
 import { format } from 'date-fns';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -9,7 +9,7 @@ import { startSync, stopSync, pushAllLocalData, pullAllRemoteData, pushTask, pus
 import { DateSelector } from './components/DateSelector';
 import { TaskItem, HabitItem, RewardItem } from './components/ListItems';
 import { CreateItemModal } from './components/CreateItemModal';
-import { PendingTasksModal } from './components/PendingTasksModal';
+import { NotificationsSheet } from './components/NotificationsSheet';
 import { SettingsModal } from './components/SettingsModal';
 
 function App() {
@@ -17,7 +17,8 @@ function App() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isExtraMode, setIsExtraMode] = useState(() => localStorage.getItem('extra-mode') === 'true');
+  const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [isExtraMode, setIsExtraMode] = useState(() => localStorage.getItem('extra-mode') !== 'false');
   const [editItem, setEditItem] = useState<{ type: 'task' | 'habit' | 'reward', id: number, data: any } | null>(null);
   const [syncing, setSyncing] = useState(false);
 
@@ -165,6 +166,55 @@ function App() {
     }
   };
 
+  // ── Overdue task actions ─────────────────────────────────────────────────────
+
+  const handleTransferOverdue = async (taskId: number) => {
+    const task = await db.tasks.get(taskId);
+    if (!task) return;
+    await db.transaction('rw', db.tasks, async () => {
+      await db.tasks.update(taskId, { status: 'transferred' });
+      await db.tasks.add({
+        title: task.title,
+        description: task.description,
+        rewardCoins: Math.abs(task.rewardCoins),
+        date: todayStr,
+        status: 'pending',
+        createdAt: Date.now(),
+      });
+    });
+    const updated = await db.tasks.get(taskId);
+    if (firebaseUser && updated) pushTask(firebaseUser.uid, updated);
+  };
+
+  const handleSkipOverdue = async (taskId: number) => {
+    await db.tasks.update(taskId, { status: 'skipped' });
+    const updated = await db.tasks.get(taskId);
+    if (firebaseUser && updated) pushTask(firebaseUser.uid, updated);
+  };
+
+  const handleFailOverdue = async (taskId: number) => {
+    const task = await db.tasks.get(taskId);
+    if (!task) return;
+    await db.transaction('rw', db.tasks, db.user, async () => {
+      await db.tasks.update(taskId, { status: 'failed' });
+      await db.tasks.add({
+        title: `Штраф: ${task.title}`,
+        description: 'Не выполнено в срок',
+        rewardCoins: -Math.abs(task.rewardCoins),
+        date: todayStr,
+        status: 'done',
+        createdAt: Date.now(),
+      });
+      const newBalance = isExtraMode
+        ? balance - Math.abs(task.rewardCoins)
+        : Math.max(0, balance - Math.abs(task.rewardCoins));
+      await db.user.update(1, { balance: newBalance });
+      if (firebaseUser) pushBalance(firebaseUser.uid, newBalance);
+    });
+    const updated = await db.tasks.get(taskId);
+    if (firebaseUser && updated) pushTask(firebaseUser.uid, updated);
+  };
+
   const handleDelete = async (type: 'task' | 'habit' | 'reward', id: number) => {
     if (type === 'task') {
       const task = await db.tasks.get(id);
@@ -188,41 +238,12 @@ function App() {
     }
   };
 
-  const handleProcessOverdueTask = async (taskId: number, action: 'transfer' | 'fail', reason?: string) => {
-    const task = await db.tasks.get(taskId);
-    if (!task) return;
 
-    await db.transaction('rw', db.tasks, db.user, async () => {
-      if (action === 'transfer') {
-        await db.tasks.update(taskId, { status: 'transferred', transferReason: reason });
-        await db.tasks.add({
-          title: task.title,
-          description: task.description,
-          rewardCoins: Math.abs(task.rewardCoins),
-          date: todayStr,
-          status: 'pending',
-          createdAt: Date.now(),
-        });
-      } else {
-        await db.tasks.update(taskId, { status: 'failed' });
-        await db.tasks.add({
-          title: `Штраф: ${task.title}`,
-          description: 'Не выполнено в срок',
-          rewardCoins: -Math.abs(task.rewardCoins),
-          date: todayStr,
-          status: 'done',
-          createdAt: Date.now(),
-        });
-        const newBalance = isExtraMode ? (balance - Math.abs(task.rewardCoins)) : Math.max(0, balance - Math.abs(task.rewardCoins));
-        await db.user.update(1, { balance: newBalance });
-      }
-    });
-  };
 
   return (
     <>
       <header className="header">
-        <span className="app-title">Hadel iz</span>
+        <DateSelector date={selectedDate} onChange={setSelectedDate} />
         <div className="header-right">
           {syncing && (
             <RefreshCw size={14} style={{ opacity: 0.5, animation: 'spin 1s linear infinite' }} />
@@ -231,6 +252,17 @@ function App() {
             <img src={`${import.meta.env.BASE_URL}Coin.png`} alt="Монетки" style={{ width: 22, height: 22, objectFit: 'contain' }} />
             <span>{balance}</span>
           </div>
+          <button
+            className="icon-btn bell-btn"
+            aria-label="Уведомления"
+            onClick={() => setIsNotifOpen(true)}
+            style={{ position: 'relative' }}
+          >
+            <Bell size={20} />
+            {overdueTasks.length > 0 && (
+              <span className="bell-badge">{overdueTasks.length}</span>
+            )}
+          </button>
           <button className="icon-btn" aria-label="Настройки" onClick={() => setIsSettingsOpen(true)}>
             <Settings size={20} />
           </button>
@@ -240,38 +272,34 @@ function App() {
 
       <main className="main-content">
         {activeTab === 'calendar' ? (
-          <>
-            <DateSelector date={selectedDate} onChange={setSelectedDate} />
+          <div className="scroll-list seamless-list">
+            {tasks.length === 0 && rewards.length === 0 && habits.length === 0 && (
+              <div className="empty-state">Пока ничего нет. Жми <strong>+</strong></div>
+            )}
 
-            <div className="list-container seamless-list">
-              {tasks.length === 0 && rewards.length === 0 && habits.length === 0 && (
-                <div className="empty-state">Пока ничего нет. Жми <strong>+</strong></div>
-              )}
+            {tasks.map(task => (
+              <TaskItem
+                key={task.id}
+                item={task}
+                onToggle={handleToggleTask}
+                onItemClick={id => { setEditItem({ type: 'task', id, data: task }); setIsModalOpen(true); }}
+              />
+            ))}
 
-              {tasks.map(task => (
-                <TaskItem
-                  key={task.id}
-                  item={task}
-                  onToggle={handleToggleTask}
-                  onItemClick={id => { setEditItem({ type: 'task', id, data: task }); setIsModalOpen(true); }}
-                />
-              ))}
+            {rewards.map(reward => (
+              <RewardItem key={`reward-${reward.id}`} item={reward} onItemClick={id => { setEditItem({ type: 'reward', id, data: reward }); setIsModalOpen(true); }} />
+            ))}
 
-              {rewards.map(reward => (
-                <RewardItem key={`reward-${reward.id}`} item={reward} onItemClick={id => { setEditItem({ type: 'reward', id, data: reward }); setIsModalOpen(true); }} />
-              ))}
-
-              {habits.map(habit => (
-                <HabitItem
-                  key={habit.id}
-                  item={habit}
-                  selectedDate={dateStr}
-                  onToggle={handleToggleHabit}
-                  onItemClick={id => { setEditItem({ type: 'habit', id, data: habit }); setIsModalOpen(true); }}
-                />
-              ))}
-            </div>
-          </>
+            {habits.map(habit => (
+              <HabitItem
+                key={habit.id}
+                item={habit}
+                selectedDate={dateStr}
+                onToggle={handleToggleHabit}
+                onItemClick={id => { setEditItem({ type: 'habit', id, data: habit }); setIsModalOpen(true); }}
+              />
+            ))}
+          </div>
         ) : (
           <div className="global-placeholder">
             <div className="emoji-icon">🌍</div>
@@ -318,14 +346,14 @@ function App() {
         editItem={editItem}
       />
 
-      {
-        overdueTasks.length > 0 && (
-          <PendingTasksModal
-            overdueTasks={overdueTasks}
-            onProcessTask={handleProcessOverdueTask}
-          />
-        )
-      }
+      <NotificationsSheet
+        isOpen={isNotifOpen}
+        onClose={() => setIsNotifOpen(false)}
+        overdueTasks={overdueTasks}
+        onTransfer={handleTransferOverdue}
+        onSkip={handleSkipOverdue}
+        onFail={handleFailOverdue}
+      />
 
       <SettingsModal
         isOpen={isSettingsOpen}

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { X, Check } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useEffect } from 'react';
+import { useSheetClose } from './useSheetClose';
 
 type ItemType = 'task' | 'habit' | 'reward';
 
@@ -27,6 +28,8 @@ export function CreateItemModal({ isOpen, onClose, onSave, editItem, onDelete }:
     const [description, setDescription] = useState('');
     const [rewardCoins, setRewardCoins] = useState(2);
     const [duration, setDuration] = useState(30);
+
+    const { isClosing, requestClose, handleAnimationEnd } = useSheetClose(isOpen, onClose);
 
     useEffect(() => {
         if (isOpen && editItem) {
@@ -70,8 +73,9 @@ export function CreateItemModal({ isOpen, onClose, onSave, editItem, onDelete }:
 
     return (
         <div
-            className="modal-overlay"
-            onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+            className={`modal-overlay${isClosing ? ' closing' : ''}`}
+            onClick={(e) => { if (e.target === e.currentTarget) requestClose(); }}
+            onAnimationEnd={handleAnimationEnd}
         >
             <div className="modal-content">
                 <div className="modal-handle" />
@@ -81,7 +85,7 @@ export function CreateItemModal({ isOpen, onClose, onSave, editItem, onDelete }:
                     <span className="modal-title">{editItem ? 'Редактировать' : 'Новое'}</span>
                     <button
                         className="icon-btn modal-close"
-                        onClick={onClose}
+                        onClick={requestClose}
                         aria-label="Закрыть"
                     >
                         <X size={16} strokeWidth={2.5} />
@@ -186,7 +190,12 @@ export function CreateItemModal({ isOpen, onClose, onSave, editItem, onDelete }:
                         {editItem && onDelete && (
                             <button
                                 type="button"
-                                onClick={() => { onDelete(editItem.type, editItem.id); onClose(); }}
+                                onClick={() => {
+                                    if (window.confirm('Вы уверены, что хотите удалить этот блок?')) {
+                                        onDelete(editItem.type, editItem.id);
+                                        requestClose();
+                                    }
+                                }}
                                 style={{ padding: '14px', borderRadius: '12px', background: 'var(--fill-primary)', color: 'var(--ios-red)', fontSize: '16px', fontWeight: '500', border: 'none', transition: 'all 0.2s', marginTop: -8 }}
                             >
                                 Удалить
