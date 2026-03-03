@@ -157,7 +157,19 @@ export async function initSyncData(uid: string): Promise<void> {
             const { _syncedAt, ...data } = snap.data() as Reward & { _syncedAt?: unknown };
             await db.rewards.put({ ...data, id: Number(snap.id) });
         }
-        // Balance handled by real-time listener
+
+        // ── Синхронно восстанавливаем баланс — не ждём onSnapshot ─────────
+        // Без этого баланс остаётся 0 до первого события от listener,
+        // а за это время pushAllLocalData (если бы вызывался) затёр бы его.
+        if (userSnap.exists() && typeof userSnap.data().balance === 'number') {
+            const remoteBalance = userSnap.data().balance as number;
+            const localUser = await db.user.get(1);
+            if (localUser) {
+                await db.user.update(1, { balance: remoteBalance });
+            } else {
+                await db.user.put({ id: 1, balance: remoteBalance });
+            }
+        }
 
     } else if (wasReset) {
         // ── Another device triggered a reset: clear local data too ─────────

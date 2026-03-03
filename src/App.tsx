@@ -5,7 +5,7 @@ import { format } from 'date-fns';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from './db/db';
 import { useAuth } from './db/useAuth';
-import { startSync, stopSync, pushAllLocalData, pullAllRemoteData, pushTask, pushHabit, pushReward, pushBalance, deleteRemoteTask, deleteRemoteHabit, deleteRemoteReward } from './db/sync';
+import { startSync, stopSync, pullAllRemoteData, pushTask, pushHabit, pushReward, pushBalance, deleteRemoteTask, deleteRemoteHabit, deleteRemoteReward } from './db/sync';
 import { DateSelector } from './components/DateSelector';
 import { TaskItem, HabitItem, RewardItem } from './components/ListItems';
 import { CreateItemModal } from './components/CreateItemModal';
@@ -28,8 +28,10 @@ function App() {
   useEffect(() => {
     if (firebaseUser) {
       setSyncing(true);
+      // pullAllRemoteData уже содержит логику: если Firebase пустой — сам вызывает pushAllLocalData.
+      // Вызывать pushAllLocalData снаружи НЕЛЬЗЯ — при заходе со второго устройства
+      // Dexie ещё не получил баланс из Firebase, и pushAllLocalData перепишет его нулём.
       pullAllRemoteData(firebaseUser.uid)
-        .then(() => pushAllLocalData(firebaseUser.uid))
         .then(() => startSync(firebaseUser.uid))
         .finally(() => setSyncing(false));
     } else {
@@ -66,22 +68,33 @@ function App() {
     const task = await db.tasks.get(id);
     if (!task) return;
 
+    let finalBalance: number | null = null;
+
     if (task.status === 'pending') {
       await db.transaction('rw', db.tasks, db.user, async () => {
         await db.tasks.update(id, { status: 'done' });
-        const newBalance = isExtraMode ? (balance + task.rewardCoins) : Math.max(0, balance + task.rewardCoins);
-        await db.user.update(1, { balance: newBalance });
+        // Читаем актуальный баланс из Dexie, а не из замыкания React state
+        const cur = (await db.user.get(1))?.balance ?? 0;
+        finalBalance = isExtraMode ? cur + task.rewardCoins : Math.max(0, cur + task.rewardCoins);
+        await db.user.update(1, { balance: finalBalance });
       });
       const updated = await db.tasks.get(id);
-      if (firebaseUser && updated) { pushTask(firebaseUser.uid, updated); pushBalance(firebaseUser.uid, isExtraMode ? (balance + task.rewardCoins) : Math.max(0, balance + task.rewardCoins)); }
+      if (firebaseUser && updated && finalBalance !== null) {
+        pushTask(firebaseUser.uid, updated);
+        pushBalance(firebaseUser.uid, finalBalance);
+      }
     } else if (task.status === 'done') {
       await db.transaction('rw', db.tasks, db.user, async () => {
         await db.tasks.update(id, { status: 'pending' });
-        const newBalance = isExtraMode ? (balance - Math.abs(task.rewardCoins)) : Math.max(0, balance - Math.abs(task.rewardCoins));
-        await db.user.update(1, { balance: newBalance });
+        const cur = (await db.user.get(1))?.balance ?? 0;
+        finalBalance = isExtraMode ? cur - Math.abs(task.rewardCoins) : Math.max(0, cur - Math.abs(task.rewardCoins));
+        await db.user.update(1, { balance: finalBalance });
       });
       const updated = await db.tasks.get(id);
-      if (firebaseUser && updated) { pushTask(firebaseUser.uid, updated); pushBalance(firebaseUser.uid, isExtraMode ? (balance - Math.abs(task.rewardCoins)) : Math.max(0, balance - Math.abs(task.rewardCoins))); }
+      if (firebaseUser && updated && finalBalance !== null) {
+        pushTask(firebaseUser.uid, updated);
+        pushBalance(firebaseUser.uid, finalBalance);
+      }
     }
   };
 
@@ -90,20 +103,27 @@ function App() {
     if (!habit) return;
 
     const isDone = habit.history.includes(dateStr);
+    let finalBalance: number | null = null;
 
     await db.transaction('rw', db.habits, db.user, async () => {
+      // Читаем актуальный баланс из Dexie, а не из замыкания React state
+      const cur = (await db.user.get(1))?.balance ?? 0;
       if (isDone) {
         await db.habits.update(id, { history: habit.history.filter(d => d !== dateStr) });
-        const newBalance = isExtraMode ? (balance - habit.rewardCoins) : Math.max(0, balance - habit.rewardCoins);
-        await db.user.update(1, { balance: newBalance });
+        finalBalance = isExtraMode ? cur - habit.rewardCoins : Math.max(0, cur - habit.rewardCoins);
       } else {
         await db.habits.update(id, { history: [...habit.history, dateStr] });
-        await db.user.update(1, { balance: balance + habit.rewardCoins });
+        finalBalance = cur + habit.rewardCoins;
       }
+      await db.user.update(1, { balance: finalBalance! });
     });
     const updated = await db.habits.get(id);
-    if (firebaseUser && updated) { pushHabit(firebaseUser.uid, updated); pushBalance(firebaseUser.uid, isDone ? (isExtraMode ? (balance - habit.rewardCoins) : Math.max(0, balance - habit.rewardCoins)) : balance + habit.rewardCoins); }
+    if (firebaseUser && updated && finalBalance !== null) {
+      pushHabit(firebaseUser.uid, updated);
+      pushBalance(firebaseUser.uid, finalBalance);
+    }
   };
+
 
   const handleCreate = async (type: 'task' | 'habit' | 'reward', data: Record<string, unknown>, editId?: number) => {
     if (type === 'task') {
