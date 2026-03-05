@@ -132,9 +132,10 @@ function App() {
         const updated = await db.tasks.get(editId);
         if (firebaseUser && updated) pushTask(firebaseUser.uid, updated);
       } else {
+        const taskDate = (data.date as string) || dateStr;
         const id = await db.tasks.add({
           ...(data as { title: string; description: string; rewardCoins: number }),
-          date: dateStr,
+          date: taskDate,
           status: 'pending',
           createdAt: Date.now(),
         });
@@ -157,6 +158,7 @@ function App() {
       }
     } else if (type === 'reward') {
       const costCoins = (data as { costCoins: number }).costCoins;
+      const rewardDate = (data.date as string) || dateStr;
       await db.transaction('rw', db.rewards, db.user, async () => {
         if (editId) {
           const old = await db.rewards.get(editId);
@@ -169,7 +171,7 @@ function App() {
         } else {
           await db.rewards.add({
             ...(data as { title: string; description: string; durationMinutes: number; costCoins: number }),
-            dateConsumed: dateStr,
+            dateConsumed: rewardDate,
             createdAt: Date.now(),
           });
           const newBalance = isExtraMode ? (balance - costCoins) : Math.max(0, balance - costCoins);
@@ -191,6 +193,7 @@ function App() {
   const handleTransferOverdue = async (taskId: number) => {
     const task = await db.tasks.get(taskId);
     if (!task) return;
+    const newCreatedAt = Date.now();
     await db.transaction('rw', db.tasks, async () => {
       await db.tasks.update(taskId, { status: 'transferred' });
       await db.tasks.add({
@@ -199,11 +202,14 @@ function App() {
         rewardCoins: Math.abs(task.rewardCoins),
         date: todayStr,
         status: 'pending',
-        createdAt: Date.now(),
+        createdAt: newCreatedAt,
       });
     });
     const updated = await db.tasks.get(taskId);
     if (firebaseUser && updated) pushTask(firebaseUser.uid, updated);
+    // Пушим новую (перенесённую) задачу тоже
+    const newTask = await db.tasks.where('createdAt').equals(newCreatedAt).first();
+    if (firebaseUser && newTask) pushTask(firebaseUser.uid, newTask);
   };
 
   const handleSkipOverdue = async (taskId: number) => {
@@ -364,6 +370,7 @@ function App() {
         onSave={handleCreate}
         onDelete={handleDelete}
         editItem={editItem}
+        defaultDate={dateStr}
       />
 
       <NotificationsSheet

@@ -1,6 +1,8 @@
-import { format, parseISO, isToday } from 'date-fns';
+import { format, isToday } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { useRef } from 'react';
+import { useState } from 'react';
+import { createPortal } from 'react-dom';
+import { CustomCalendar } from './CustomCalendar';
 
 interface Props {
     date: Date;
@@ -8,18 +10,9 @@ interface Props {
 }
 
 export function DateSelector({ date, onChange }: Props) {
-    const dateInputRef = useRef<HTMLInputElement>(null);
+    const [calOpen, setCalOpen] = useState(false);
 
-    const handleClick = () => {
-        // @ts-ignore
-        dateInputRef.current?.showPicker?.() || dateInputRef.current?.focus();
-    };
-
-    const handleNativeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.value) onChange(parseISO(e.target.value));
-    };
-
-    const formatted = format(date, 'd MMMM, EEEE', { locale: ru });
+    const formatted = format(date, 'd MMMM, EEEEEE', { locale: ru });
     const label = formatted.charAt(0).toUpperCase() + formatted.slice(1);
     const today = isToday(date);
 
@@ -27,18 +20,20 @@ export function DateSelector({ date, onChange }: Props) {
         <div className="header-date-wrapper">
             <button
                 className={`header-date-btn${today ? ' today' : ''}`}
-                onClick={handleClick}
+                onClick={() => setCalOpen(true)}
                 aria-label="Выбрать дату"
             >
                 {label}
             </button>
-            <input
-                type="date"
-                ref={dateInputRef}
-                className="hidden-date-input"
-                value={format(date, 'yyyy-MM-dd')}
-                onChange={handleNativeChange}
-            />
+
+            {calOpen && createPortal(
+                <CustomCalendar
+                    value={date}
+                    onChange={(d) => { onChange(d); setCalOpen(false); }}
+                    onClose={() => setCalOpen(false)}
+                />,
+                document.body
+            )}
         </div>
     );
 }

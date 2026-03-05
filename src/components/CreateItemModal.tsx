@@ -1,8 +1,11 @@
 import { useState } from 'react';
-import { X, Check } from 'lucide-react';
+import { X, Check, CalendarDays } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useEffect } from 'react';
+import { format, parseISO } from 'date-fns';
+import { ru } from 'date-fns/locale';
 import { useSheetClose } from './useSheetClose';
+import { CustomCalendar } from './CustomCalendar';
 
 type ItemType = 'task' | 'habit' | 'reward';
 
@@ -12,6 +15,7 @@ interface CreateItemModalProps {
     onSave: (type: ItemType, data: Record<string, unknown>, editId?: number) => void;
     onDelete?: (type: ItemType, id: number) => void;
     editItem?: { type: ItemType; id: number; data: any } | null;
+    defaultDate: string; // ISO: yyyy-MM-dd
 }
 
 const DURATION_STEPS = [30, 60, 90, 120, 180, 240];
@@ -22,12 +26,14 @@ function formatDuration(minutes: number) {
     return `${h} ${h === 1 ? 'час' : h < 5 ? 'часа' : 'часов'}`;
 }
 
-export function CreateItemModal({ isOpen, onClose, onSave, editItem, onDelete }: CreateItemModalProps) {
+export function CreateItemModal({ isOpen, onClose, onSave, editItem, onDelete, defaultDate }: CreateItemModalProps) {
     const [type, setType] = useState<ItemType>('task');
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [rewardCoins, setRewardCoins] = useState(2);
     const [duration, setDuration] = useState(30);
+    const [selectedDate, setSelectedDate] = useState(defaultDate);
+    const [isCalOpen, setIsCalOpen] = useState(false);
 
     const { isClosing, requestClose, handleAnimationEnd } = useSheetClose(isOpen, onClose);
 
@@ -46,8 +52,9 @@ export function CreateItemModal({ isOpen, onClose, onSave, editItem, onDelete }:
             setDescription('');
             setRewardCoins(2);
             setDuration(30);
+            setSelectedDate(defaultDate);
         }
-    }, [isOpen, editItem]);
+    }, [isOpen, editItem, defaultDate]);
 
     if (!isOpen) return null;
 
@@ -56,7 +63,9 @@ export function CreateItemModal({ isOpen, onClose, onSave, editItem, onDelete }:
         if (!title.trim()) return;
 
         if (type === 'reward') {
-            onSave(type, { title, description, durationMinutes: duration, costCoins: (duration / 30) * 10 }, editItem ? editItem.id : undefined);
+            onSave(type, { title, description, durationMinutes: duration, costCoins: (duration / 30) * 10, date: selectedDate }, editItem ? editItem.id : undefined);
+        } else if (type === 'task') {
+            onSave(type, { title, description, rewardCoins, date: selectedDate }, editItem ? editItem.id : undefined);
         } else {
             onSave(type, { title, description, rewardCoins }, editItem ? editItem.id : undefined);
         }
@@ -180,6 +189,30 @@ export function CreateItemModal({ isOpen, onClose, onSave, editItem, onDelete }:
                                         ))}
                                     </div>
                                 </div>
+                            </div>
+                        )}
+
+                        {/* Дата — только для нового дела/отдыха */}
+                        {!editItem && (type === 'task' || type === 'reward') && (
+                            <div className="input-group">
+                                <label className="input-label">Дата</label>
+                                <button
+                                    type="button"
+                                    className="date-pick-btn"
+                                    onClick={() => setIsCalOpen(true)}
+                                >
+                                    <CalendarDays size={16} strokeWidth={2} />
+                                    <span>
+                                        {format(parseISO(selectedDate), 'd MMMM, EEEEEE', { locale: ru }).replace(/^./, c => c.toUpperCase())}
+                                    </span>
+                                </button>
+                                {isCalOpen && (
+                                    <CustomCalendar
+                                        value={selectedDate}
+                                        onChange={(d) => { setSelectedDate(format(d, 'yyyy-MM-dd')); setIsCalOpen(false); }}
+                                        onClose={() => setIsCalOpen(false)}
+                                    />
+                                )}
                             </div>
                         )}
 
