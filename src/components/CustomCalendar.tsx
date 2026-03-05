@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, isSameDay, isToday, parseISO } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths, isSameDay, isToday, parseISO, startOfWeek, endOfWeek, isSameMonth } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -16,10 +16,11 @@ export function CustomCalendar({ value, onChange, onClose }: CustomCalendarProps
 
     const monthStart = startOfMonth(viewMonth);
     const monthEnd = endOfMonth(viewMonth);
-    const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
 
-    // date-fns getDay: 0=вс, 1=пн…6=сб → сдвигаем чтобы Monday=0
-    const startPadding = (getDay(monthStart) + 6) % 7;
+    // Получаем полное начало и конец календаря по неделям (ПН-ВС)
+    const calendarStart = startOfWeek(monthStart, { weekStartsOn: 1 });
+    const calendarEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
+    const days = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
 
     const handleDayClick = (d: Date) => {
         onChange(d);
@@ -52,22 +53,23 @@ export function CustomCalendar({ value, onChange, onClose }: CustomCalendarProps
 
                 {/* Days grid */}
                 <div className="cal-grid">
-                    {Array.from({ length: startPadding }).map((_, i) => (
-                        <div key={`pad-${i}`} className="cal-cell cal-cell--empty" />
-                    ))}
-                    {days.map(d => (
-                        <button
-                            key={d.toISOString()}
-                            className={[
-                                'cal-cell',
-                                isSameDay(d, selected) ? 'cal-cell--selected' : '',
-                                isToday(d) && !isSameDay(d, selected) ? 'cal-cell--today' : '',
-                            ].join(' ')}
-                            onClick={() => handleDayClick(d)}
-                        >
-                            {format(d, 'd')}
-                        </button>
-                    ))}
+                    {days.map(d => {
+                        const isCurrentMonth = isSameMonth(d, viewMonth);
+                        return (
+                            <button
+                                key={d.toISOString()}
+                                className={[
+                                    'cal-cell',
+                                    isSameDay(d, selected) ? 'cal-cell--selected' : '',
+                                    isToday(d) && !isSameDay(d, selected) ? 'cal-cell--today' : '',
+                                    !isCurrentMonth ? 'cal-cell--muted' : '',
+                                ].join(' ').trim()}
+                                onClick={() => handleDayClick(d)}
+                            >
+                                {format(d, 'd')}
+                            </button>
+                        );
+                    })}
                 </div>
             </div>
         </div>

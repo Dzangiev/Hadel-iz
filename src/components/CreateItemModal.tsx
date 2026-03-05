@@ -45,6 +45,9 @@ export function CreateItemModal({ isOpen, onClose, onSave, editItem, onDelete, d
             setRewardCoins((editItem.data.rewardCoins as number) || Math.abs((editItem.data.costCoins as number) || 2));
             if (editItem.type === 'reward') {
                 setDuration((editItem.data.durationMinutes as number) || 30);
+                setSelectedDate((editItem.data.dateConsumed as string) || defaultDate);
+            } else if (editItem.type === 'task') {
+                setSelectedDate((editItem.data.date as string) || defaultDate);
             }
         } else if (isOpen && !editItem) {
             setType('task');
@@ -192,8 +195,8 @@ export function CreateItemModal({ isOpen, onClose, onSave, editItem, onDelete, d
                             </div>
                         )}
 
-                        {/* Дата — только для нового дела/отдыха */}
-                        {!editItem && (type === 'task' || type === 'reward') && (
+                        {/* Дата — для нового или редактируемого дела/отдыха */}
+                        {(type === 'task' || type === 'reward') && (
                             <div className="input-group">
                                 <label className="input-label">Дата</label>
                                 <button

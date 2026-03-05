@@ -164,7 +164,12 @@ function App() {
           const old = await db.rewards.get(editId);
           if (old) {
             const diff = old.costCoins - costCoins;
-            await db.rewards.update(editId, data as any);
+            const updatePayload: any = { ...data };
+            if (updatePayload.date) {
+              updatePayload.dateConsumed = updatePayload.date;
+              delete updatePayload.date;
+            }
+            await db.rewards.update(editId, updatePayload);
             const newBalance = isExtraMode ? (balance + diff) : Math.max(0, balance + diff);
             await db.user.update(1, { balance: newBalance });
           }
