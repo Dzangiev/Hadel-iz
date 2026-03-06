@@ -32,6 +32,7 @@ function App() {
       // Вызывать pushAllLocalData снаружи НЕЛЬЗЯ — при заходе со второго устройства
       // Dexie ещё не получил баланс из Firebase, и pushAllLocalData перепишет его нулём.
       pullAllRemoteData(firebaseUser.uid)
+        .catch((err) => console.warn('Sync init error (offline?):', err))
         .then(() => startSync(firebaseUser.uid))
         .finally(() => setSyncing(false));
     } else {
@@ -50,7 +51,12 @@ function App() {
 
   const dateStr = format(selectedDate, 'yyyy-MM-dd');
 
-  const tasks = useLiveQuery(() => db.tasks.where('date').equals(dateStr).toArray(), [dateStr]) ?? [];
+  const tasks = useLiveQuery(
+    () => db.tasks.where('date').equals(dateStr)
+      .filter(t => t.status !== 'transferred' && t.status !== 'skipped')
+      .toArray(),
+    [dateStr]
+  ) ?? [];
   const habits = useLiveQuery(() => db.habits.toArray(), []) ?? [];
   const rewards = useLiveQuery(() => db.rewards.where('dateConsumed').equals(dateStr).toArray(), [dateStr]) ?? [];
 
@@ -159,8 +165,10 @@ function App() {
     } else if (type === 'reward') {
       const costCoins = (data as { costCoins: number }).costCoins;
       const rewardDate = (data.date as string) || dateStr;
-      await db.transaction('rw', db.rewards, db.user, async () => {
-        if (editId) {
+      if (editId) {
+        let newReward: import('./db/db').Reward | undefined;
+        let newBalance = 0;
+        await db.transaction('rw', db.rewards, db.user, async () => {
           const old = await db.rewards.get(editId);
           if (old) {
             const diff = old.costCoins - costCoins;
@@ -170,25 +178,36 @@ function App() {
               delete updatePayload.date;
             }
             await db.rewards.update(editId, updatePayload);
-            const newBalance = isExtraMode ? (balance + diff) : Math.max(0, balance + diff);
+            const cur = (await db.user.get(1))?.balance ?? 0;
+            newBalance = isExtraMode ? (cur + diff) : Math.max(0, cur + diff);
             await db.user.update(1, { balance: newBalance });
           }
-        } else {
-          await db.rewards.add({
+        });
+        newReward = await db.rewards.get(editId);
+        if (firebaseUser && newReward) {
+          pushReward(firebaseUser.uid, newReward);
+          const cur = (await db.user.get(1))?.balance ?? 0;
+          pushBalance(firebaseUser.uid, cur);
+        }
+      } else {
+        let newId: number | undefined;
+        let newBalance = 0;
+        await db.transaction('rw', db.rewards, db.user, async () => {
+          newId = await db.rewards.add({
             ...(data as { title: string; description: string; durationMinutes: number; costCoins: number }),
             dateConsumed: rewardDate,
             createdAt: Date.now(),
-          });
-          const newBalance = isExtraMode ? (balance - costCoins) : Math.max(0, balance - costCoins);
+          }) as number;
+          const cur = (await db.user.get(1))?.balance ?? 0;
+          newBalance = isExtraMode ? (cur - costCoins) : Math.max(0, cur - costCoins);
           await db.user.update(1, { balance: newBalance });
+        });
+        if (firebaseUser && newId) {
+          const addedReward = await db.rewards.get(newId);
+          if (addedReward) pushReward(firebaseUser.uid, addedReward);
+          const cur = (await db.user.get(1))?.balance ?? 0;
+          pushBalance(firebaseUser.uid, cur);
         }
-      });
-      if (editId) {
-        const updated = await db.rewards.get(editId);
-        if (firebaseUser && updated) { pushReward(firebaseUser.uid, updated); pushBalance(firebaseUser.uid, isExtraMode ? (balance + updated.costCoins) : Math.max(0, balance)); }
-      } else {
-        const all = await db.rewards.orderBy('createdAt').last();
-        if (firebaseUser && all) { pushReward(firebaseUser.uid, all); pushBalance(firebaseUser.uid, isExtraMode ? (balance - costCoins) : Math.max(0, balance - costCoins)); }
       }
     }
   };
@@ -226,6 +245,7 @@ function App() {
   const handleFailOverdue = async (taskId: number) => {
     const task = await db.tasks.get(taskId);
     if (!task) return;
+    const penaltyCreatedAt = Date.now();
     await db.transaction('rw', db.tasks, db.user, async () => {
       await db.tasks.update(taskId, { status: 'failed' });
       await db.tasks.add({
@@ -234,16 +254,20 @@ function App() {
         rewardCoins: -Math.abs(task.rewardCoins),
         date: todayStr,
         status: 'done',
-        createdAt: Date.now(),
+        createdAt: penaltyCreatedAt,
       });
+      const cur = (await db.user.get(1))?.balance ?? 0;
       const newBalance = isExtraMode
-        ? balance - Math.abs(task.rewardCoins)
-        : Math.max(0, balance - Math.abs(task.rewardCoins));
+        ? cur - Math.abs(task.rewardCoins)
+        : Math.max(0, cur - Math.abs(task.rewardCoins));
       await db.user.update(1, { balance: newBalance });
-      if (firebaseUser) pushBalance(firebaseUser.uid, newBalance);
     });
     const updated = await db.tasks.get(taskId);
     if (firebaseUser && updated) pushTask(firebaseUser.uid, updated);
+    const penaltyTask = await db.tasks.where('createdAt').equals(penaltyCreatedAt).first();
+    if (firebaseUser && penaltyTask) pushTask(firebaseUser.uid, penaltyTask);
+    const cur = (await db.user.get(1))?.balance ?? 0;
+    if (firebaseUser) pushBalance(firebaseUser.uid, cur);
   };
 
   const handleDelete = async (type: 'task' | 'habit' | 'reward', id: number) => {

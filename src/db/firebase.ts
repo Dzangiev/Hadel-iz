@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
 
 // Your web app's Firebase configuration
 // Users should replace this with their own config from Firebase Console
@@ -17,6 +17,15 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const dbFirestore = getFirestore(app);
+
+// Enable offline persistence — изменения кэшируются и отправляются при восстановлении сети
+enableIndexedDbPersistence(dbFirestore).catch((err) => {
+    // failed-precondition: несколько вкладок открыто (только первая получает persistence)
+    // unimplemented: браузер не поддерживает (очень редко)
+    if (err.code !== 'failed-precondition' && err.code !== 'unimplemented') {
+        console.warn('Firestore persistence error:', err);
+    }
+});
 
 const provider = new GoogleAuthProvider();
 
