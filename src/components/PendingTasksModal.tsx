@@ -3,7 +3,7 @@ import type { Task } from '../db/db';
 
 interface PendingTasksModalProps {
     overdueTasks: Task[];
-    onProcessTask: (taskId: number, action: 'transfer' | 'fail', reason?: string) => void;
+    onProcessTask: (taskId: string, action: 'transfer' | 'fail', reason?: string) => void;
 }
 
 export function PendingTasksModal({ overdueTasks, onProcessTask }: PendingTasksModalProps) {

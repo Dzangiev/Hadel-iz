@@ -12,9 +12,9 @@ type ItemType = 'task' | 'habit' | 'reward';
 interface CreateItemModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSave: (type: ItemType, data: Record<string, unknown>, editId?: number) => void;
-    onDelete?: (type: ItemType, id: number) => void;
-    editItem?: { type: ItemType; id: number; data: any } | null;
+    onSave: (type: ItemType, data: Record<string, unknown>, editId?: string) => void;
+    onDelete?: (type: ItemType, id: string) => void;
+    editItem?: { type: ItemType; id: string; data: any } | null;
     defaultDate: string; // ISO: yyyy-MM-dd
 }
 

@@ -3,9 +3,9 @@ import { Settings, Calendar as CalendarIcon, Globe, Plus, RefreshCw, Bell } from
 import { clsx } from 'clsx';
 import { format } from 'date-fns';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from './db/db';
+import { db, generateId } from './db/db';
 import { useAuth } from './db/useAuth';
-import { startSync, stopSync, pullAllRemoteData, pushTask, pushHabit, pushReward, pushBalance, deleteRemoteTask, deleteRemoteHabit, deleteRemoteReward } from './db/sync';
+import { startSync, stopSync, pullAllRemoteData, writeTask, writeHabit, writeReward, updateBalance, removeTask, removeHabit, removeReward } from './db/sync';
 import { DateSelector } from './components/DateSelector';
 import { TaskItem, HabitItem, RewardItem } from './components/ListItems';
 import { CreateItemModal } from './components/CreateItemModal';
@@ -19,20 +19,17 @@ function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isExtraMode, setIsExtraMode] = useState(() => localStorage.getItem('extra-mode') !== 'false');
-  const [editItem, setEditItem] = useState<{ type: 'task' | 'habit' | 'reward', id: number, data: any } | null>(null);
+  const [editItem, setEditItem] = useState<{ type: 'task' | 'habit' | 'reward', id: string, data: any } | null>(null);
   const [syncing, setSyncing] = useState(false);
 
   const { user: firebaseUser } = useAuth();
+  const uid = firebaseUser?.uid;
 
   // Start / stop Firestore sync on auth change
   useEffect(() => {
     if (firebaseUser) {
       setSyncing(true);
-      // pullAllRemoteData уже содержит логику: если Firebase пустой — сам вызывает pushAllLocalData.
-      // Вызывать pushAllLocalData снаружи НЕЛЬЗЯ — при заходе со второго устройства
-      // Dexie ещё не получил баланс из Firebase, и pushAllLocalData перепишет его нулём.
       pullAllRemoteData(firebaseUser.uid)
-        .catch((err) => console.warn('Sync init error (offline?):', err))
         .then(() => startSync(firebaseUser.uid))
         .finally(() => setSyncing(false));
     } else {
@@ -70,225 +67,229 @@ function App() {
     [todayStr]
   ) ?? [];
 
-  const handleToggleTask = async (id: number) => {
-    const task = await db.tasks.get(id);
-    if (!task) return;
+  // ─── Helpers for Firestore-first writes ────────────────────────────────────
 
-    let finalBalance: number | null = null;
-
-    if (task.status === 'pending') {
-      await db.transaction('rw', db.tasks, db.user, async () => {
-        await db.tasks.update(id, { status: 'done' });
-        // Читаем актуальный баланс из Dexie, а не из замыкания React state
-        const cur = (await db.user.get(1))?.balance ?? 0;
-        finalBalance = isExtraMode ? cur + task.rewardCoins : Math.max(0, cur + task.rewardCoins);
-        await db.user.update(1, { balance: finalBalance });
-      });
-      const updated = await db.tasks.get(id);
-      if (firebaseUser && updated && finalBalance !== null) {
-        pushTask(firebaseUser.uid, updated);
-        pushBalance(firebaseUser.uid, finalBalance);
-      }
-    } else if (task.status === 'done') {
-      await db.transaction('rw', db.tasks, db.user, async () => {
-        await db.tasks.update(id, { status: 'pending' });
-        const cur = (await db.user.get(1))?.balance ?? 0;
-        finalBalance = isExtraMode ? cur - Math.abs(task.rewardCoins) : Math.max(0, cur - Math.abs(task.rewardCoins));
-        await db.user.update(1, { balance: finalBalance });
-      });
-      const updated = await db.tasks.get(id);
-      if (firebaseUser && updated && finalBalance !== null) {
-        pushTask(firebaseUser.uid, updated);
-        pushBalance(firebaseUser.uid, finalBalance);
-      }
+  /**
+   * Записать задачу: если залогинен → Firestore (Dexie обновится через onSnapshot),
+   * если нет → Dexie напрямую.
+   */
+  const saveTask = async (task: import('./db/db').Task) => {
+    if (uid) {
+      await writeTask(uid, task);
+    } else {
+      await db.tasks.put(task);
     }
   };
 
-  const handleToggleHabit = async (id: number) => {
+  const saveHabit = async (habit: import('./db/db').Habit) => {
+    if (uid) {
+      await writeHabit(uid, habit);
+    } else {
+      await db.habits.put(habit);
+    }
+  };
+
+  const saveReward = async (reward: import('./db/db').Reward) => {
+    if (uid) {
+      await writeReward(uid, reward);
+    } else {
+      await db.rewards.put(reward);
+    }
+  };
+
+  /**
+   * Изменить баланс на delta.
+   * Залогинен → increment в Firestore (атомарно, без race condition).
+   * Не залогинен → прямая запись в Dexie.
+   */
+  const changeBalance = async (delta: number) => {
+    if (uid) {
+      await updateBalance(uid, delta);
+    } else {
+      const cur = (await db.user.get(1))?.balance ?? 0;
+      const newBal = isExtraMode ? cur + delta : Math.max(0, cur + delta);
+      await db.user.update(1, { balance: newBal });
+    }
+  };
+
+  // ─── Handlers ───────────────────────────────────────────────────────────────
+
+  const handleToggleTask = async (id: string) => {
+    const task = await db.tasks.get(id);
+    if (!task) return;
+
+    if (task.status === 'pending') {
+      const updated = { ...task, status: 'done' as const };
+      await saveTask(updated);
+      await changeBalance(task.rewardCoins);
+      // Если не залогинен, Dexie уже обновлён через saveTask
+      // Если залогинен, Dexie обновится через onSnapshot
+    } else if (task.status === 'done') {
+      const updated = { ...task, status: 'pending' as const };
+      await saveTask(updated);
+      await changeBalance(-Math.abs(task.rewardCoins));
+    }
+  };
+
+  const handleToggleHabit = async (id: string) => {
     const habit = await db.habits.get(id);
     if (!habit) return;
 
     const isDone = habit.history.includes(dateStr);
-    let finalBalance: number | null = null;
 
-    await db.transaction('rw', db.habits, db.user, async () => {
-      // Читаем актуальный баланс из Dexie, а не из замыкания React state
-      const cur = (await db.user.get(1))?.balance ?? 0;
-      if (isDone) {
-        await db.habits.update(id, { history: habit.history.filter(d => d !== dateStr) });
-        finalBalance = isExtraMode ? cur - habit.rewardCoins : Math.max(0, cur - habit.rewardCoins);
-      } else {
-        await db.habits.update(id, { history: [...habit.history, dateStr] });
-        finalBalance = cur + habit.rewardCoins;
-      }
-      await db.user.update(1, { balance: finalBalance! });
-    });
-    const updated = await db.habits.get(id);
-    if (firebaseUser && updated && finalBalance !== null) {
-      pushHabit(firebaseUser.uid, updated);
-      pushBalance(firebaseUser.uid, finalBalance);
+    if (isDone) {
+      const updated = { ...habit, history: habit.history.filter(d => d !== dateStr) };
+      await saveHabit(updated);
+      await changeBalance(-habit.rewardCoins);
+    } else {
+      const updated = { ...habit, history: [...habit.history, dateStr] };
+      await saveHabit(updated);
+      await changeBalance(habit.rewardCoins);
     }
   };
 
 
-  const handleCreate = async (type: 'task' | 'habit' | 'reward', data: Record<string, unknown>, editId?: number) => {
+  const handleCreate = async (type: 'task' | 'habit' | 'reward', data: Record<string, unknown>, editId?: string) => {
     if (type === 'task') {
       if (editId) {
-        await db.tasks.update(editId, data as any);
-        const updated = await db.tasks.get(editId);
-        if (firebaseUser && updated) pushTask(firebaseUser.uid, updated);
+        const existing = await db.tasks.get(editId);
+        if (existing) {
+          await saveTask({ ...existing, ...data as any });
+        }
       } else {
         const taskDate = (data.date as string) || dateStr;
-        const id = await db.tasks.add({
+        const newTask: import('./db/db').Task = {
+          id: generateId(),
           ...(data as { title: string; description: string; rewardCoins: number }),
           date: taskDate,
           status: 'pending',
           createdAt: Date.now(),
-        });
-        const added = await db.tasks.get(id);
-        if (firebaseUser && added) pushTask(firebaseUser.uid, added);
+        };
+        await saveTask(newTask);
       }
     } else if (type === 'habit') {
       if (editId) {
-        await db.habits.update(editId, data as any);
-        const updated = await db.habits.get(editId);
-        if (firebaseUser && updated) pushHabit(firebaseUser.uid, updated);
+        const existing = await db.habits.get(editId);
+        if (existing) {
+          await saveHabit({ ...existing, ...data as any });
+        }
       } else {
-        const id = await db.habits.add({
+        const newHabit: import('./db/db').Habit = {
+          id: generateId(),
           ...(data as { title: string; description: string; rewardCoins: number }),
           history: [],
           createdAt: Date.now(),
-        });
-        const added = await db.habits.get(id);
-        if (firebaseUser && added) pushHabit(firebaseUser.uid, added);
+        };
+        await saveHabit(newHabit);
       }
     } else if (type === 'reward') {
       const costCoins = (data as { costCoins: number }).costCoins;
       const rewardDate = (data.date as string) || dateStr;
+
       if (editId) {
-        let newReward: import('./db/db').Reward | undefined;
-        let newBalance = 0;
-        await db.transaction('rw', db.rewards, db.user, async () => {
-          const old = await db.rewards.get(editId);
-          if (old) {
-            const diff = old.costCoins - costCoins;
-            const updatePayload: any = { ...data };
-            if (updatePayload.date) {
-              updatePayload.dateConsumed = updatePayload.date;
-              delete updatePayload.date;
-            }
-            await db.rewards.update(editId, updatePayload);
-            const cur = (await db.user.get(1))?.balance ?? 0;
-            newBalance = isExtraMode ? (cur + diff) : Math.max(0, cur + diff);
-            await db.user.update(1, { balance: newBalance });
+        const old = await db.rewards.get(editId);
+        if (old) {
+          const diff = old.costCoins - costCoins;
+          const updatePayload: any = { ...old, ...data };
+          if (updatePayload.date) {
+            updatePayload.dateConsumed = updatePayload.date;
+            delete updatePayload.date;
           }
-        });
-        newReward = await db.rewards.get(editId);
-        if (firebaseUser && newReward) {
-          pushReward(firebaseUser.uid, newReward);
-          const cur = (await db.user.get(1))?.balance ?? 0;
-          pushBalance(firebaseUser.uid, cur);
+          await saveReward(updatePayload);
+          if (diff !== 0) {
+            await changeBalance(diff);
+          }
         }
       } else {
-        let newId: number | undefined;
-        let newBalance = 0;
-        await db.transaction('rw', db.rewards, db.user, async () => {
-          newId = await db.rewards.add({
-            ...(data as { title: string; description: string; durationMinutes: number; costCoins: number }),
-            dateConsumed: rewardDate,
-            createdAt: Date.now(),
-          }) as number;
-          const cur = (await db.user.get(1))?.balance ?? 0;
-          newBalance = isExtraMode ? (cur - costCoins) : Math.max(0, cur - costCoins);
-          await db.user.update(1, { balance: newBalance });
-        });
-        if (firebaseUser && newId) {
-          const addedReward = await db.rewards.get(newId);
-          if (addedReward) pushReward(firebaseUser.uid, addedReward);
-          const cur = (await db.user.get(1))?.balance ?? 0;
-          pushBalance(firebaseUser.uid, cur);
-        }
+        const newReward: import('./db/db').Reward = {
+          id: generateId(),
+          ...(data as { title: string; description: string; durationMinutes: number; costCoins: number }),
+          dateConsumed: rewardDate,
+          createdAt: Date.now(),
+        };
+        await saveReward(newReward);
+        await changeBalance(-costCoins);
       }
     }
   };
 
   // ── Overdue task actions ─────────────────────────────────────────────────────
 
-  const handleTransferOverdue = async (taskId: number) => {
+  const handleTransferOverdue = async (taskId: string) => {
     const task = await db.tasks.get(taskId);
     if (!task) return;
-    const newCreatedAt = Date.now();
-    await db.transaction('rw', db.tasks, async () => {
-      await db.tasks.update(taskId, { status: 'transferred' });
-      await db.tasks.add({
-        title: task.title,
-        description: task.description,
-        rewardCoins: Math.abs(task.rewardCoins),
-        date: todayStr,
-        status: 'pending',
-        createdAt: newCreatedAt,
-      });
-    });
-    const updated = await db.tasks.get(taskId);
-    if (firebaseUser && updated) pushTask(firebaseUser.uid, updated);
-    // Пушим новую (перенесённую) задачу тоже
-    const newTask = await db.tasks.where('createdAt').equals(newCreatedAt).first();
-    if (firebaseUser && newTask) pushTask(firebaseUser.uid, newTask);
+
+    // Помечаем старую задачу как перенесённую
+    const transferred = { ...task, status: 'transferred' as const };
+    await saveTask(transferred);
+
+    // Создаём новую задачу на сегодня
+    const newTask: import('./db/db').Task = {
+      id: generateId(),
+      title: task.title,
+      description: task.description,
+      rewardCoins: Math.abs(task.rewardCoins),
+      date: todayStr,
+      status: 'pending',
+      createdAt: Date.now(),
+    };
+    await saveTask(newTask);
   };
 
-  const handleSkipOverdue = async (taskId: number) => {
-    await db.tasks.update(taskId, { status: 'skipped' });
-    const updated = await db.tasks.get(taskId);
-    if (firebaseUser && updated) pushTask(firebaseUser.uid, updated);
-  };
-
-  const handleFailOverdue = async (taskId: number) => {
+  const handleSkipOverdue = async (taskId: string) => {
     const task = await db.tasks.get(taskId);
     if (!task) return;
-    const penaltyCreatedAt = Date.now();
-    await db.transaction('rw', db.tasks, db.user, async () => {
-      await db.tasks.update(taskId, { status: 'failed' });
-      await db.tasks.add({
-        title: `Штраф: ${task.title}`,
-        description: 'Не выполнено в срок',
-        rewardCoins: -Math.abs(task.rewardCoins),
-        date: todayStr,
-        status: 'done',
-        createdAt: penaltyCreatedAt,
-      });
-      const cur = (await db.user.get(1))?.balance ?? 0;
-      const newBalance = isExtraMode
-        ? cur - Math.abs(task.rewardCoins)
-        : Math.max(0, cur - Math.abs(task.rewardCoins));
-      await db.user.update(1, { balance: newBalance });
-    });
-    const updated = await db.tasks.get(taskId);
-    if (firebaseUser && updated) pushTask(firebaseUser.uid, updated);
-    const penaltyTask = await db.tasks.where('createdAt').equals(penaltyCreatedAt).first();
-    if (firebaseUser && penaltyTask) pushTask(firebaseUser.uid, penaltyTask);
-    const cur = (await db.user.get(1))?.balance ?? 0;
-    if (firebaseUser) pushBalance(firebaseUser.uid, cur);
+    await saveTask({ ...task, status: 'skipped' as const });
   };
 
-  const handleDelete = async (type: 'task' | 'habit' | 'reward', id: number) => {
+  const handleFailOverdue = async (taskId: string) => {
+    const task = await db.tasks.get(taskId);
+    if (!task) return;
+
+    // Помечаем старую задачу как проваленную
+    const failed = { ...task, status: 'failed' as const };
+    await saveTask(failed);
+
+    // Создаём задачу-штраф
+    const penaltyTask: import('./db/db').Task = {
+      id: generateId(),
+      title: `Штраф: ${task.title}`,
+      description: 'Не выполнено в срок',
+      rewardCoins: -Math.abs(task.rewardCoins),
+      date: todayStr,
+      status: 'done',
+      createdAt: Date.now(),
+    };
+    await saveTask(penaltyTask);
+    await changeBalance(-Math.abs(task.rewardCoins));
+  };
+
+  const handleDelete = async (type: 'task' | 'habit' | 'reward', id: string) => {
     if (type === 'task') {
       const task = await db.tasks.get(id);
       if (task?.status === 'done') {
-        const newBalance = isExtraMode ? (balance - task.rewardCoins) : Math.max(0, balance - task.rewardCoins);
-        await db.user.update(1, { balance: newBalance });
-        if (firebaseUser) pushBalance(firebaseUser.uid, newBalance);
+        await changeBalance(-task.rewardCoins);
       }
-      await db.tasks.delete(id);
-      if (firebaseUser) deleteRemoteTask(firebaseUser.uid, id);
+      if (uid) {
+        await removeTask(uid, id);
+      } else {
+        await db.tasks.delete(id);
+      }
     } else if (type === 'habit') {
-      await db.habits.delete(id);
-      if (firebaseUser) deleteRemoteHabit(firebaseUser.uid, id);
+      if (uid) {
+        await removeHabit(uid, id);
+      } else {
+        await db.habits.delete(id);
+      }
     } else if (type === 'reward') {
       const rew = await db.rewards.get(id);
       if (rew) {
-        await db.user.update(1, { balance: balance + rew.costCoins });
-        await db.rewards.delete(id);
-        if (firebaseUser) { pushBalance(firebaseUser.uid, balance + rew.costCoins); deleteRemoteReward(firebaseUser.uid, id); }
+        await changeBalance(rew.costCoins);
+        if (uid) {
+          await removeReward(uid, id);
+        } else {
+          await db.rewards.delete(id);
+        }
       }
     }
   };

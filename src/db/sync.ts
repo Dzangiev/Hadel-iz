@@ -1,10 +1,14 @@
 /**
- * Firebase Firestore sync layer.
+ * Firebase Firestore sync layer — Firestore-first.
  *
- * Strategy: Local-first. All writes go to Dexie first, then are pushed to
- * Firestore as sub-collections under the user's UID document. On login / app
- * start, we subscribe to Firestore real-time listeners and merge remote data
- * into Dexie (last-write-wins on updatedAt).
+ * Стратегия:
+ *   Залогинен → все записи идут напрямую в Firestore.
+ *               Firestore SDK кэширует их оффлайн и отправляет при восстановлении сети.
+ *               onSnapshot обновляет Dexie → useLiveQuery обновляет UI.
+ *   Не залогинен → записи идут в Dexie напрямую (без Firestore).
+ *
+ *   initSyncData — при входе: если в Firestore есть данные → заменить Dexie.
+ *                              если Firestore пуст → загрузить локальные данные вверх.
  */
 
 import {
@@ -18,9 +22,10 @@ import {
     serverTimestamp,
     writeBatch,
     getDocs,
+    increment,
 } from 'firebase/firestore';
 import { dbFirestore } from './firebase';
-import { db } from './db';
+import { db, generateId } from './db';
 import type { Task, Habit, Reward } from './db';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -33,47 +38,104 @@ function userDoc(uid: string) {
     return doc(dbFirestore, 'users', uid);
 }
 
-// ─── Push a single item to Firestore ─────────────────────────────────────────
+// ─── Firestore write operations (Firestore-first) ────────────────────────────
+// Эти функции пишут ТОЛЬКО в Firestore. Dexie обновится через onSnapshot.
+// Благодаря persistence SDK, запись кэшируется оффлайн автоматически.
 
-export async function pushTask(uid: string, task: Task) {
+/** Создать или обновить задачу в Firestore */
+export async function writeTask(uid: string, task: Task): Promise<void> {
     if (!task.id) return;
-    await setDoc(doc(userCol(uid, 'tasks'), String(task.id)), {
-        ...task,
-        _syncedAt: serverTimestamp(),
-    });
+    try {
+        await setDoc(doc(userCol(uid, 'tasks'), task.id), {
+            ...task,
+            _syncedAt: serverTimestamp(),
+        });
+    } catch (err) {
+        console.warn('writeTask error:', err);
+    }
 }
 
-export async function pushHabit(uid: string, habit: Habit) {
+/** Создать или обновить привычку в Firestore */
+export async function writeHabit(uid: string, habit: Habit): Promise<void> {
     if (!habit.id) return;
-    await setDoc(doc(userCol(uid, 'habits'), String(habit.id)), {
-        ...habit,
-        _syncedAt: serverTimestamp(),
-    });
+    try {
+        await setDoc(doc(userCol(uid, 'habits'), habit.id), {
+            ...habit,
+            _syncedAt: serverTimestamp(),
+        });
+    } catch (err) {
+        console.warn('writeHabit error:', err);
+    }
 }
 
-export async function pushReward(uid: string, reward: Reward) {
+/** Создать или обновить отдых в Firestore */
+export async function writeReward(uid: string, reward: Reward): Promise<void> {
     if (!reward.id) return;
-    await setDoc(doc(userCol(uid, 'rewards'), String(reward.id)), {
-        ...reward,
-        _syncedAt: serverTimestamp(),
-    });
+    try {
+        await setDoc(doc(userCol(uid, 'rewards'), reward.id), {
+            ...reward,
+            _syncedAt: serverTimestamp(),
+        });
+    } catch (err) {
+        console.warn('writeReward error:', err);
+    }
 }
 
-export async function pushBalance(uid: string, balance: number) {
-    await setDoc(userDoc(uid), { balance, _syncedAt: serverTimestamp() }, { merge: true });
+/**
+ * Изменить баланс на delta (±).
+ * Использует increment() из Firestore — защита от race condition при
+ * одновременном использовании нескольких устройств.
+ */
+export async function updateBalance(uid: string, delta: number): Promise<void> {
+    try {
+        await setDoc(userDoc(uid), {
+            balance: increment(delta),
+            _syncedAt: serverTimestamp(),
+        }, { merge: true });
+    } catch (err) {
+        console.warn('updateBalance error:', err);
+    }
 }
 
-export async function deleteRemoteTask(uid: string, id: number) {
-    await deleteDoc(doc(userCol(uid, 'tasks'), String(id)));
+/** Установить баланс в абсолютное значение (используется только при initSync и reset) */
+export async function setAbsoluteBalance(uid: string, balance: number): Promise<void> {
+    try {
+        await setDoc(userDoc(uid), {
+            balance,
+            _syncedAt: serverTimestamp(),
+        }, { merge: true });
+    } catch (err) {
+        console.warn('setAbsoluteBalance error:', err);
+    }
 }
 
-export async function deleteRemoteHabit(uid: string, id: number) {
-    await deleteDoc(doc(userCol(uid, 'habits'), String(id)));
+/** Удалить задачу из Firestore */
+export async function removeTask(uid: string, id: string): Promise<void> {
+    try {
+        await deleteDoc(doc(userCol(uid, 'tasks'), id));
+    } catch (err) {
+        console.warn('removeTask error:', err);
+    }
 }
 
-export async function deleteRemoteReward(uid: string, id: number) {
-    await deleteDoc(doc(userCol(uid, 'rewards'), String(id)));
+/** Удалить привычку из Firestore */
+export async function removeHabit(uid: string, id: string): Promise<void> {
+    try {
+        await deleteDoc(doc(userCol(uid, 'habits'), id));
+    } catch (err) {
+        console.warn('removeHabit error:', err);
+    }
 }
+
+/** Удалить отдых из Firestore */
+export async function removeReward(uid: string, id: string): Promise<void> {
+    try {
+        await deleteDoc(doc(userCol(uid, 'rewards'), id));
+    } catch (err) {
+        console.warn('removeReward error:', err);
+    }
+}
+
 
 // ─── Initial full push (upload all local data to Firestore on first login) ────
 
@@ -82,32 +144,33 @@ export async function pushAllLocalData(uid: string) {
 
     const tasks = await db.tasks.toArray();
     for (const t of tasks) {
-        if (t.id) {
-            batch.set(doc(userCol(uid, 'tasks'), String(t.id)), {
-                ...t,
-                _syncedAt: serverTimestamp(),
-            });
-        }
+        // Если у локальной задачи числовой id (от старой схемы) — генерируем UUID
+        const docId = t.id || generateId();
+        batch.set(doc(userCol(uid, 'tasks'), docId), {
+            ...t,
+            id: docId,
+            _syncedAt: serverTimestamp(),
+        });
     }
 
     const habits = await db.habits.toArray();
     for (const h of habits) {
-        if (h.id) {
-            batch.set(doc(userCol(uid, 'habits'), String(h.id)), {
-                ...h,
-                _syncedAt: serverTimestamp(),
-            });
-        }
+        const docId = h.id || generateId();
+        batch.set(doc(userCol(uid, 'habits'), docId), {
+            ...h,
+            id: docId,
+            _syncedAt: serverTimestamp(),
+        });
     }
 
     const rewards = await db.rewards.toArray();
     for (const r of rewards) {
-        if (r.id) {
-            batch.set(doc(userCol(uid, 'rewards'), String(r.id)), {
-                ...r,
-                _syncedAt: serverTimestamp(),
-            });
-        }
+        const docId = r.id || generateId();
+        batch.set(doc(userCol(uid, 'rewards'), docId), {
+            ...r,
+            id: docId,
+            _syncedAt: serverTimestamp(),
+        });
     }
 
     const user = await db.user.get(1);
@@ -119,68 +182,69 @@ export async function pushAllLocalData(uid: string) {
 }
 
 // ─── Smart initialization: Firestore is source of truth ───────────────────────
-//
-// Rules:
-//  1. If Firestore has any data  → pull remote and REPLACE local (remote wins).
-//  2. If Firestore is empty AND local has data AND no reset_at in Firestore
-//     (i.e. first-ever login) → push local to Firestore (initial upload).
-//  3. If Firestore has reset_at but no data → user reset from another device;
-//     wipe local data to match.
 
 export async function initSyncData(uid: string): Promise<void> {
-    const [remoteTasks, remoteHabits, remoteRewards, userSnap] = await Promise.all([
-        getDocs(userCol(uid, 'tasks')),
-        getDocs(userCol(uid, 'habits')),
-        getDocs(userCol(uid, 'rewards')),
-        getDoc(userDoc(uid)),
-    ]);
+    try {
+        const [remoteTasks, remoteHabits, remoteRewards, userSnap] = await Promise.all([
+            getDocs(userCol(uid, 'tasks')),
+            getDocs(userCol(uid, 'habits')),
+            getDocs(userCol(uid, 'rewards')),
+            getDoc(userDoc(uid)),
+        ]);
 
-    const hasRemoteData =
-        remoteTasks.size > 0 || remoteHabits.size > 0 || remoteRewards.size > 0;
-    const wasReset = userSnap.exists() && userSnap.data()?.reset_at;
+        const hasRemoteData =
+            remoteTasks.size > 0 || remoteHabits.size > 0 || remoteRewards.size > 0;
+        const wasReset = userSnap.exists() && userSnap.data()?.reset_at;
 
-    if (hasRemoteData) {
-        // ── Remote wins: overwrite local completely ────────────────────────
-        await db.tasks.clear();
-        await db.habits.clear();
-        await db.rewards.clear();
+        if (hasRemoteData) {
+            // ── Remote wins: overwrite local completely ────────────────────────
+            await db.tasks.clear();
+            await db.habits.clear();
+            await db.rewards.clear();
 
-        for (const snap of remoteTasks.docs) {
-            const { _syncedAt, ...data } = snap.data() as Task & { _syncedAt?: unknown };
-            await db.tasks.put({ ...data, id: Number(snap.id) });
-        }
-        for (const snap of remoteHabits.docs) {
-            const { _syncedAt, ...data } = snap.data() as Habit & { _syncedAt?: unknown };
-            await db.habits.put({ ...data, id: Number(snap.id) });
-        }
-        for (const snap of remoteRewards.docs) {
-            const { _syncedAt, ...data } = snap.data() as Reward & { _syncedAt?: unknown };
-            await db.rewards.put({ ...data, id: Number(snap.id) });
-        }
+            for (const snap of remoteTasks.docs) {
+                const { _syncedAt, ...data } = snap.data() as Task & { _syncedAt?: unknown };
+                await db.tasks.put({ ...data, id: snap.id });
+            }
+            for (const snap of remoteHabits.docs) {
+                const { _syncedAt, ...data } = snap.data() as Habit & { _syncedAt?: unknown };
+                await db.habits.put({ ...data, id: snap.id });
+            }
+            for (const snap of remoteRewards.docs) {
+                const { _syncedAt, ...data } = snap.data() as Reward & { _syncedAt?: unknown };
+                await db.rewards.put({ ...data, id: snap.id });
+            }
 
-        // ── Синхронно восстанавливаем баланс — не ждём onSnapshot ─────────
-        // Без этого баланс остаётся 0 до первого события от listener,
-        // а за это время pushAllLocalData (если бы вызывался) затёр бы его.
-        if (userSnap.exists() && typeof userSnap.data().balance === 'number') {
-            const remoteBalance = userSnap.data().balance as number;
+            // Синхронно восстанавливаем баланс
+            if (userSnap.exists() && typeof userSnap.data().balance === 'number') {
+                const remoteBalance = userSnap.data().balance as number;
+                const localUser = await db.user.get(1);
+                if (localUser) {
+                    await db.user.update(1, { balance: remoteBalance });
+                } else {
+                    await db.user.put({ id: 1, balance: remoteBalance });
+                }
+            }
+
+        } else if (wasReset) {
+            // ── Another device triggered a reset: clear local data too ─────────
+            await db.tasks.clear();
+            await db.habits.clear();
+            await db.rewards.clear();
             const localUser = await db.user.get(1);
             if (localUser) {
-                await db.user.update(1, { balance: remoteBalance });
+                await db.user.update(1, { balance: 0 });
             } else {
-                await db.user.put({ id: 1, balance: remoteBalance });
+                await db.user.put({ id: 1, balance: 0 });
             }
+
+        } else {
+            // ── Firestore is empty, no reset flag → first login, upload local ──
+            await pushAllLocalData(uid);
         }
-
-    } else if (wasReset) {
-        // ── Another device triggered a reset: clear local data too ─────────
-        await db.tasks.clear();
-        await db.habits.clear();
-        await db.rewards.clear();
-        await db.user.update(1, { balance: 0 });
-
-    } else {
-        // ── Firestore is empty, no reset flag → first login, upload local ──
-        await pushAllLocalData(uid);
+    } catch (err) {
+        console.warn('initSyncData error (offline?):', err);
+        // При ошибке — работаем с локальными данными. Sync подхватится через onSnapshot.
     }
 }
 
@@ -211,10 +275,10 @@ export function startSync(uid: string): void {
         onSnapshot(userCol(uid, 'tasks'), snapshot => {
             snapshot.docChanges().forEach(async change => {
                 if (change.type === 'removed') {
-                    await db.tasks.delete(Number(change.doc.id));
+                    await db.tasks.delete(change.doc.id);
                 } else {
                     const { _syncedAt, ...data } = change.doc.data() as Task & { _syncedAt?: unknown };
-                    await db.tasks.put({ ...data, id: Number(change.doc.id) });
+                    await db.tasks.put({ ...data, id: change.doc.id });
                 }
             });
         })
@@ -225,10 +289,10 @@ export function startSync(uid: string): void {
         onSnapshot(userCol(uid, 'habits'), snapshot => {
             snapshot.docChanges().forEach(async change => {
                 if (change.type === 'removed') {
-                    await db.habits.delete(Number(change.doc.id));
+                    await db.habits.delete(change.doc.id);
                 } else {
                     const { _syncedAt, ...data } = change.doc.data() as Habit & { _syncedAt?: unknown };
-                    await db.habits.put({ ...data, id: Number(change.doc.id) });
+                    await db.habits.put({ ...data, id: change.doc.id });
                 }
             });
         })
@@ -239,10 +303,10 @@ export function startSync(uid: string): void {
         onSnapshot(userCol(uid, 'rewards'), snapshot => {
             snapshot.docChanges().forEach(async change => {
                 if (change.type === 'removed') {
-                    await db.rewards.delete(Number(change.doc.id));
+                    await db.rewards.delete(change.doc.id);
                 } else {
                     const { _syncedAt, ...data } = change.doc.data() as Reward & { _syncedAt?: unknown };
-                    await db.rewards.put({ ...data, id: Number(change.doc.id) });
+                    await db.rewards.put({ ...data, id: change.doc.id });
                 }
             });
         })
@@ -254,9 +318,10 @@ export function startSync(uid: string): void {
             if (snap.exists()) {
                 const remoteBalance = snap.data().balance as number;
                 const localUser = await db.user.get(1);
-                // Remote wins (last-write-wins via Firestore)
                 if (localUser && localUser.balance !== remoteBalance) {
                     await db.user.update(1, { balance: remoteBalance });
+                } else if (!localUser) {
+                    await db.user.put({ id: 1, balance: remoteBalance });
                 }
             }
         })

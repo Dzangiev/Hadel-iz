@@ -26,8 +26,8 @@ export function ListSection({ title, icon, children }: ListSectionProps) {
 // ============== TASK ==============
 interface TaskItemProps {
     item: Task;
-    onToggle: (id: number) => void;
-    onItemClick: (id: number) => void;
+    onToggle: (id: string) => void;
+    onItemClick: (id: string) => void;
 }
 
 export function TaskItem({ item, onToggle, onItemClick }: TaskItemProps) {
@@ -84,8 +84,8 @@ export function TaskItem({ item, onToggle, onItemClick }: TaskItemProps) {
 interface HabitItemProps {
     item: Habit;
     selectedDate: string;
-    onToggle: (id: number) => void;
-    onItemClick: (id: number) => void;
+    onToggle: (id: string) => void;
+    onItemClick: (id: string) => void;
 }
 
 export function HabitItem({ item, selectedDate, onToggle, onItemClick }: HabitItemProps) {
@@ -161,7 +161,7 @@ export function HabitItem({ item, selectedDate, onToggle, onItemClick }: HabitIt
 // ============== REWARD (ОТДЫХ) ==============
 interface RewardItemProps {
     item: Reward;
-    onItemClick: (id: number) => void;
+    onItemClick: (id: string) => void;
 }
 
 export function RewardItem({ item, onItemClick }: RewardItemProps) {

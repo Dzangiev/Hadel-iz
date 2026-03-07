@@ -7,13 +7,13 @@ interface NotificationsSheetProps {
     isOpen: boolean;
     onClose: () => void;
     overdueTasks: Task[];
-    onTransfer: (taskId: number) => void;
-    onSkip: (taskId: number) => void;
-    onFail: (taskId: number) => void;
+    onTransfer: (taskId: string) => void;
+    onSkip: (taskId: string) => void;
+    onFail: (taskId: string) => void;
 }
 
 type ConfirmAction = {
-    taskId: number;
+    taskId: string;
     action: 'transfer' | 'skip' | 'fail';
     title: string;
 } | null;

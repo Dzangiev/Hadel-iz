@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
-import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
 
 // Your web app's Firebase configuration
 // Users should replace this with their own config from Firebase Console
@@ -16,15 +16,14 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const dbFirestore = getFirestore(app);
 
-// Enable offline persistence — изменения кэшируются и отправляются при восстановлении сети
-enableIndexedDbPersistence(dbFirestore).catch((err) => {
-    // failed-precondition: несколько вкладок открыто (только первая получает persistence)
-    // unimplemented: браузер не поддерживает (очень редко)
-    if (err.code !== 'failed-precondition' && err.code !== 'unimplemented') {
-        console.warn('Firestore persistence error:', err);
-    }
+// Firestore с offline persistence + поддержкой нескольких вкладок
+// Все записи (setDoc / deleteDoc) кэшируются оффлайн и отправляются при восстановлении сети.
+// onSnapshot получает обновления из локального кэша мгновенно даже без сети.
+export const dbFirestore = initializeFirestore(app, {
+    localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager(),
+    }),
 });
 
 const provider = new GoogleAuthProvider();
